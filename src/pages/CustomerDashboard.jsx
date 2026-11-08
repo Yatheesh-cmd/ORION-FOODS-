@@ -4,7 +4,7 @@ import { toast } from "react-toastify";
 import { FaUtensils, FaHistory, FaArrowRight } from "react-icons/fa";
 import API from "../services/api";
 import { formatINR } from "../assets/utils/pricing";
-import { enableOneSignalForUser } from "../services/onesignal";
+import { enableOneSignalForUser } from "../services/oneSignal";
 
 const formatDate = (value) => {
   if (!value) return "—";
