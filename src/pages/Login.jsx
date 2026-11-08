@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { GoogleOAuthProvider, GoogleLogin } from "@react-oauth/google";
 import { useAuth } from "../context/AuthContext";
@@ -83,7 +83,32 @@ export default function Login() {
     []
   );
 
-  // Built once, so typing in the form never re-initialises the Google button.
+  // Google draws the button at a fixed pixel width, so measure the space we really have
+  // and re-draw it to fit (200px minimum, 400px maximum are Google's limits).
+  const googleWrapRef = useRef(null);
+  const [googleWidth, setGoogleWidth] = useState(320);
+
+  useEffect(() => {
+    const el = googleWrapRef.current;
+    if (!el) return undefined;
+
+    const update = () => {
+      const w = Math.floor(el.getBoundingClientRect().width);
+      const next = Math.max(200, Math.min(400, w));
+      setGoogleWidth((prev) => (prev === next ? prev : next));
+    };
+
+    update();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", update);
+      return () => window.removeEventListener("resize", update);
+    }
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Rebuilt only when the width really changes, so typing in the form never re-initialises it.
   const googleButton = useMemo(
     () => (
       <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
@@ -94,15 +119,15 @@ export default function Login() {
           shape="rectangular"
           theme="outline"
           size="large"
-          width="320"
+          width={String(googleWidth)}
         />
       </GoogleOAuthProvider>
     ),
-    [handleGoogleSuccess, handleGoogleError]
+    [handleGoogleSuccess, handleGoogleError, googleWidth]
   );
 
   return (
-    <div className="relative flex min-h-[calc(100vh-52px)] items-center justify-center overflow-hidden bg-slate-100 px-4 py-10 sm:px-6">
+    <div className="relative flex min-h-[calc(100vh-52px)] items-center justify-center overflow-hidden bg-slate-100 px-3 py-8 sm:px-6 sm:py-10">
       {/* page background */}
       <div className="absolute -left-32 -top-32 h-96 w-96 rounded-full bg-blue-400/25 blur-3xl" />
       <div className="absolute -bottom-32 -right-32 h-96 w-96 rounded-full bg-orange-400/25 blur-3xl" />
@@ -147,7 +172,7 @@ export default function Login() {
         </aside>
 
         {/* ===================== RIGHT: FORM ===================== */}
-        <main className="flex items-center px-6 py-10 sm:px-12 sm:py-14">
+        <main className="flex items-center px-5 py-10 sm:px-12 sm:py-14">
           <div className="mx-auto w-full max-w-sm">
             {/* mobile brand */}
             <Link to="/" className="mb-8 flex items-center gap-3 lg:hidden">
@@ -168,7 +193,8 @@ export default function Login() {
             {/* ---------- Google login (real Google button, always clickable) ---------- */}
             {GOOGLE_CLIENT_ID && (
               <div className="mt-8">
-                <div className="flex min-h-[44px] justify-center">
+                <div ref={googleWrapRef} className="w-full min-w-0 overflow-hidden">
+                  <div className="flex min-h-[44px] justify-center">
                   {googleLoading ? (
                     <div className="flex h-11 items-center justify-center gap-3 text-sm font-bold text-slate-500">
                       <FaSpinner className="animate-spin" />
@@ -177,6 +203,7 @@ export default function Login() {
                   ) : (
                     googleButton
                   )}
+                  </div>
                 </div>
 
                 {/* not registered notice */}
