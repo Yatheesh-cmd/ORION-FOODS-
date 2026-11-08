@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { GoogleOAuthProvider, GoogleLogin } from "@react-oauth/google";
 import { useAuth } from "../context/AuthContext";
@@ -25,17 +25,6 @@ const PERKS = [
   { icon: FaCreditCard, title: "UPI & GPay payments", text: "Pay instantly and track your balance." },
   { icon: FaClock, title: "Live order tracking", text: "Follow every order until it arrives." },
 ];
-
-function GoogleLogo({ className = "h-5 w-5" }) {
-  return (
-    <svg className={className} viewBox="0 0 48 48" aria-hidden="true">
-      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
-      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
-      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
-      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
-    </svg>
-  );
-}
 
 export default function Login() {
   const { login, loginWithGoogle } = useAuth();
@@ -82,6 +71,35 @@ export default function Login() {
       setGoogleLoading(false);
     }
   };
+
+  // Always call the latest handler, but give Google a handler that never changes.
+  // This stops "google.accounts.id.initialize() is called multiple times".
+  const successRef = useRef(onGoogleSuccess);
+  successRef.current = onGoogleSuccess;
+
+  const handleGoogleSuccess = useCallback((response) => successRef.current(response), []);
+  const handleGoogleError = useCallback(
+    () => toast.error("Google sign-in failed. Please try again."),
+    []
+  );
+
+  // Built once, so typing in the form never re-initialises the Google button.
+  const googleButton = useMemo(
+    () => (
+      <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
+        <GoogleLogin
+          onSuccess={handleGoogleSuccess}
+          onError={handleGoogleError}
+          text="signin_with"
+          shape="rectangular"
+          theme="outline"
+          size="large"
+          width="320"
+        />
+      </GoogleOAuthProvider>
+    ),
+    [handleGoogleSuccess, handleGoogleError]
+  );
 
   return (
     <div className="relative flex min-h-[calc(100vh-52px)] items-center justify-center overflow-hidden bg-slate-100 px-4 py-10 sm:px-6">
@@ -147,49 +165,18 @@ export default function Login() {
               Sign in and we'll take you straight to your customer, staff or admin dashboard.
             </p>
 
-            {/* ---------- Google login ---------- */}
+            {/* ---------- Google login (real Google button, always clickable) ---------- */}
             {GOOGLE_CLIENT_ID && (
               <div className="mt-8">
-                <div
-                  className={`group relative h-12 overflow-hidden rounded-2xl ${
-                    googleLoading ? "pointer-events-none" : ""
-                  }`}
-                >
-                  {/* visible custom button */}
-                  <div className="pointer-events-none absolute inset-0 flex items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 shadow-sm transition duration-200 group-hover:-translate-y-0.5 group-hover:border-blue-300 group-hover:shadow-lg group-hover:shadow-blue-500/10 group-active:translate-y-0 group-active:scale-[0.99]">
-                    {googleLoading ? (
-                      <>
-                        <FaSpinner className="animate-spin text-slate-400" />
-                        Logging in with Google…
-                      </>
-                    ) : (
-                      <>
-                        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-50 ring-1 ring-slate-200 transition group-hover:bg-white group-hover:ring-blue-200">
-                          <GoogleLogo className="h-[18px] w-[18px]" />
-                        </span>
-                        <span>Sign in with Google</span>
-                        <FaArrowRight className="ml-auto text-xs text-slate-300 transition duration-200 group-hover:translate-x-1 group-hover:text-blue-500" />
-                      </>
-                    )}
-                  </div>
-
-                  {/* real Google button: invisible, stretched over the custom one so clicks work */}
-                  <div
-                    className="absolute inset-0 flex items-center justify-center opacity-0"
-                    style={{ transform: "scale(1.25)" }}
-                  >
-                    <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
-                      <GoogleLogin
-                        onSuccess={onGoogleSuccess}
-                        onError={() => toast.error("Google sign-in failed. Please try again.")}
-                        text="signin_with"
-                        shape="rectangular"
-                        theme="outline"
-                        size="large"
-                        width="400"
-                      />
-                    </GoogleOAuthProvider>
-                  </div>
+                <div className="flex min-h-[44px] justify-center">
+                  {googleLoading ? (
+                    <div className="flex h-11 items-center justify-center gap-3 text-sm font-bold text-slate-500">
+                      <FaSpinner className="animate-spin" />
+                      Logging in with Google…
+                    </div>
+                  ) : (
+                    googleButton
+                  )}
                 </div>
 
                 {/* not registered notice */}
