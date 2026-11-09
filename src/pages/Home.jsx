@@ -50,85 +50,63 @@ const getAuth = () => {
 const dashboardFor = (role) => (role === "admin" ? "/admin" : role === "staff" ? "/staff" : "/customer");
 
 /* ------------------------------------------------------------------ */
+/*  Device helpers                                                     */
+/* ------------------------------------------------------------------ */
+
+const prefersReducedMotion = () =>
+  typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+
+const isFinePointer = () =>
+  typeof window !== "undefined" && !!window.matchMedia?.("(hover: hover) and (pointer: fine)").matches;
+
+const isSmallScreen = () => typeof window !== "undefined" && window.innerWidth < 768;
+
+/* ------------------------------------------------------------------ */
 /*  Scroll helpers                                                     */
 /* ------------------------------------------------------------------ */
 
-/* One shared scroll listener for every Reveal: works for fast scrolling in both directions */
-const revealers = new Set();
-let revealTicking = false;
-
-const runRevealers = () => {
-  revealTicking = false;
-  revealers.forEach((fn) => fn());
-};
-
-const queueReveal = () => {
-  if (revealTicking) return;
-  revealTicking = true;
-  requestAnimationFrame(runRevealers);
-};
-
-const addRevealer = (fn) => {
-  if (revealers.size === 0) {
-    window.addEventListener("scroll", queueReveal, { passive: true });
-    window.addEventListener("resize", queueReveal);
-    window.addEventListener("load", queueReveal);
-  }
-  revealers.add(fn);
-};
-
-const removeRevealer = (fn) => {
-  revealers.delete(fn);
-  if (revealers.size === 0) {
-    window.removeEventListener("scroll", queueReveal);
-    window.removeEventListener("resize", queueReveal);
-    window.removeEventListener("load", queueReveal);
-  }
-};
-
-/** Fades + slides its children in once. Anything on screen OR already scrolled past is always shown. */
+/**
+ * Fades + slides its children in once.
+ * Uses IntersectionObserver, so fast scrolling (up or down) never leaves content hidden:
+ * anything on screen OR already scrolled past is shown immediately.
+ */
 function Reveal({ children, delay = 0, y = 36, x = 0, scale = 1, className = "" }) {
   const ref = useRef(null);
   const [shown, setShown] = useState(false);
-  const [small] = useState(() => typeof window !== "undefined" && window.innerWidth < 768);
+  const [small] = useState(isSmallScreen);
 
   useEffect(() => {
     const el = ref.current;
     if (!el) return undefined;
 
-    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    if (reduce) {
+    if (prefersReducedMotion() || typeof IntersectionObserver === "undefined") {
       setShown(true);
       return undefined;
     }
 
-    const check = () => {
-      const r = el.getBoundingClientRect();
-      // on screen, already above the screen (fast scroll / jump), or just about to enter
-      if (r.top < window.innerHeight * 0.95) {
-        setShown(true);
-        removeRevealer(check);
-      }
-    };
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          // visible now, or already above the viewport (fast scroll / jump)
+          if (e.isIntersecting || e.boundingClientRect.top < 0) {
+            setShown(true);
+            io.disconnect();
+          }
+        });
+      },
+      { rootMargin: "0px 0px 12% 0px", threshold: 0 }
+    );
+    io.observe(el);
 
-    addRevealer(check);
-    check();
-    // layout can shift while images load, so re-check a couple of times
-    const t1 = setTimeout(check, 300);
-    const t2 = setTimeout(check, 1200);
-
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-      removeRevealer(check);
-    };
+    return () => io.disconnect();
   }, []);
 
   // lighter, shorter animation on phones (no sideways slide, so no horizontal wobble)
-  const dy = small ? Math.min(y, 22) : y;
+  const dy = small ? Math.min(y, 16) : y;
   const dx = small ? 0 : x;
-  const dur = small ? 0.55 : 0.8;
-  const dl = small ? Math.min(delay, 80) : delay;
+  const sc = small ? 1 : scale;
+  const dur = small ? 0.5 : 0.8;
+  const dl = small ? Math.min(delay, 60) : delay;
 
   return (
     <div
@@ -136,9 +114,8 @@ function Reveal({ children, delay = 0, y = 36, x = 0, scale = 1, className = "" 
       className={className}
       style={{
         opacity: shown ? 1 : 0,
-        transform: shown ? "none" : `translate3d(${dx}px, ${dy}px, 0) scale(${scale})`,
+        transform: shown ? "none" : `translate3d(${dx}px, ${dy}px, 0) scale(${sc})`,
         transition: `opacity ${dur}s cubic-bezier(.2,.7,.2,1) ${dl}ms, transform ${dur}s cubic-bezier(.2,.7,.2,1) ${dl}ms`,
-        willChange: shown ? "auto" : "opacity, transform",
       }}
     >
       {children}
@@ -146,25 +123,36 @@ function Reveal({ children, delay = 0, y = 36, x = 0, scale = 1, className = "" 
   );
 }
 
-/** Thin progress bar at the top of the page. */
+/** Thin progress bar at the top of the page (GPU friendly: only transform changes). */
 function ScrollProgress() {
   const bar = useRef(null);
 
   useEffect(() => {
-    const prev = document.documentElement.style.scrollBehavior;
-    document.documentElement.style.scrollBehavior = "smooth";
+    // smooth anchor scrolling only with a mouse; on touch it makes scrolling feel heavy
+    const html = document.documentElement;
+    const prev = html.style.scrollBehavior;
+    if (isFinePointer()) html.style.scrollBehavior = "smooth";
 
-    const onScroll = () => {
-      const h = document.documentElement;
-      const max = h.scrollHeight - h.clientHeight;
-      const p = max > 0 ? (h.scrollTop / max) * 100 : 0;
-      if (bar.current) bar.current.style.width = `${p}%`;
+    let ticking = false;
+    const update = () => {
+      ticking = false;
+      const max = html.scrollHeight - html.clientHeight;
+      const p = max > 0 ? Math.min(1, Math.max(0, window.scrollY / max)) : 0;
+      if (bar.current) bar.current.style.transform = `scaleX(${p})`;
     };
-    onScroll();
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(update);
+    };
+
+    update();
     window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
     return () => {
-      document.documentElement.style.scrollBehavior = prev;
+      html.style.scrollBehavior = prev;
       window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
     };
   }, []);
 
@@ -172,25 +160,22 @@ function ScrollProgress() {
     <div className="pointer-events-none fixed inset-x-0 top-0 z-[60] h-1">
       <div
         ref={bar}
-        className="h-full w-0 bg-gradient-to-r from-blue-500 via-orange-400 to-amber-300 shadow-[0_0_10px_rgba(251,146,60,.7)]"
+        className="h-full w-full origin-left bg-gradient-to-r from-blue-500 via-orange-400 to-amber-300 shadow-[0_0_10px_rgba(251,146,60,.7)]"
+        style={{ transform: "scaleX(0)" }}
       />
     </div>
   );
 }
 
-/** Tilts its child slightly towards the mouse (desktop only). */
+/** Tilts its child slightly towards the mouse (desktop with a mouse only). */
 function Tilt({ children, max = 7 }) {
   const ref = useRef(null);
-  const enabled = useRef(true);
+  const [enabled] = useState(() => !prefersReducedMotion() && isFinePointer());
 
-  useEffect(() => {
-    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    const fine = window.matchMedia?.("(hover: hover) and (pointer: fine)").matches;
-    enabled.current = !reduce && fine;
-  }, []);
+  if (!enabled) return <>{children}</>;
 
   const move = (e) => {
-    if (!enabled.current || !ref.current) return;
+    if (!ref.current) return;
     const r = ref.current.getBoundingClientRect();
     const px = (e.clientX - r.left) / r.width - 0.5;
     const py = (e.clientY - r.top) / r.height - 0.5;
@@ -214,8 +199,7 @@ function CountUp({ to, duration = 1200 }) {
   const [n, setN] = useState(0);
 
   useEffect(() => {
-    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    if (reduce) {
+    if (prefersReducedMotion()) {
       setN(to);
       return undefined;
     }
@@ -266,9 +250,9 @@ function RotatingMeal() {
 }
 
 const HERO_STATS = [
-  { value: 7, suffix: "", label: "Days of fresh menu", emoji: "📅" },
-  { value: 3, suffix: "", label: "Meals served daily", emoji: "🍽️" },
-  { value: 10, suffix: "-day", label: "Auto order plans", emoji: "⚡" },
+  { value: 7, suffix: "", label: "Days of fresh menu", emoji: "📅", tile: "from-sky-400/30 to-blue-500/20" },
+  { value: 3, suffix: "", label: "Meals served daily", emoji: "🍽️", tile: "from-orange-400/30 to-amber-500/20" },
+  { value: 10, suffix: "-day", label: "Auto order plans", emoji: "⚡", tile: "from-fuchsia-400/30 to-violet-500/20" },
 ];
 
 /* ------------------------------------------------------------------ */
@@ -318,7 +302,7 @@ function SampleOrderCard() {
 
   return (
     <div className="relative mx-auto w-full max-w-md">
-      <div className="absolute inset-0 -z-0 scale-95 rounded-[2rem] bg-gradient-to-br from-blue-400/40 to-orange-400/40 blur-2xl" />
+      <div className="absolute inset-0 -z-0 hidden scale-95 rounded-[2rem] bg-gradient-to-br from-blue-400/40 to-orange-400/40 blur-2xl sm:block" />
 
       <div className="animate-float absolute -left-5 -top-6 z-20 hidden items-center gap-2 rounded-2xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 shadow-xl ring-1 ring-slate-900/5 sm:flex">
         <span className="flex h-7 w-7 items-center justify-center rounded-full bg-green-100 text-green-600">
@@ -333,7 +317,7 @@ function SampleOrderCard() {
       <div className="relative z-10 overflow-hidden rounded-3xl bg-white shadow-2xl shadow-black/30 ring-1 ring-white/40">
         <div className="h-1.5 w-full bg-gradient-to-r from-blue-600 via-blue-400 to-orange-500" />
 
-        <div className="p-6">
+        <div className="p-5 sm:p-6">
           <div className="mb-5 flex items-start justify-between">
             <div>
               <div className="flex items-center gap-2">
@@ -729,7 +713,7 @@ function ImageLightbox({ src, alt, onClose }) {
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/85 p-4 backdrop-blur-md"
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/90 p-4 sm:backdrop-blur-md"
       style={{ animation: "homeFade .25s ease-out" }}
       onClick={onClose}
       role="dialog"
@@ -775,12 +759,12 @@ function MenuShowcase() {
   const go = (delta) => setActive((i) => (i + delta + WEEK_MENU.length) % WEEK_MENU.length);
 
   return (
-    <section className="relative overflow-hidden bg-brand-gradient py-20 sm:py-24">
+    <section className="relative overflow-hidden bg-brand-gradient py-16 sm:py-24">
       <div className="bg-grid-dark absolute inset-0" />
-      <div className="absolute -left-32 top-20 h-96 w-96 rounded-full bg-blue-500/25 blur-3xl" />
-      <div className="absolute -bottom-32 right-0 h-[28rem] w-[28rem] rounded-full bg-orange-500/25 blur-3xl" />
+      <div className="absolute -left-32 top-20 hidden h-96 w-96 rounded-full bg-blue-500/25 blur-3xl sm:block" />
+      <div className="absolute -bottom-32 right-0 hidden h-[28rem] w-[28rem] rounded-full bg-orange-500/25 blur-3xl sm:block" />
 
-      <div className="relative z-10 mx-auto max-w-7xl px-5">
+      <div className="relative z-10 mx-auto max-w-7xl px-4 sm:px-5">
         {/* ---------- heading ---------- */}
         <Reveal className="mx-auto max-w-2xl text-center">
           <div className="glass mb-5 inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-semibold text-orange-200">
@@ -813,7 +797,7 @@ function MenuShowcase() {
           </div>
         </Reveal>
 
-        <div className="mt-12 grid items-start gap-6 lg:grid-cols-5 lg:gap-8">
+        <div className="mt-10 grid items-start gap-6 sm:mt-12 lg:grid-cols-5 lg:gap-8">
           {/* ---------- LEFT: why + printed card ---------- */}
           <div className="order-2 space-y-5 lg:order-1 lg:col-span-2">
             <Reveal x={-40} y={20}>
@@ -850,6 +834,7 @@ function MenuShowcase() {
                     alt="Orion Foods printed weekly menu card"
                     className="h-full w-full object-cover object-top transition duration-700 ease-out group-hover:scale-105"
                     decoding="async"
+                    loading="lazy"
                   />
                   <span className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/20 to-transparent" />
                   <span className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-2 p-4">
@@ -869,12 +854,12 @@ function MenuShowcase() {
           {/* ---------- RIGHT: interactive compact menu ---------- */}
           <Reveal x={40} y={20} delay={120} className="order-1 lg:order-2 lg:col-span-3">
             <div className="relative">
-              <div className="absolute inset-0 scale-95 rounded-[2rem] bg-gradient-to-br from-orange-400/30 to-indigo-400/30 blur-2xl" />
+              <div className="absolute inset-0 hidden scale-95 rounded-[2rem] bg-gradient-to-br from-orange-400/30 to-indigo-400/30 blur-2xl sm:block" />
 
               <div className="relative overflow-hidden rounded-3xl bg-white shadow-2xl shadow-black/40 ring-1 ring-white/40">
                 {/* header */}
                 <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-[#0b1b3f] to-slate-900 px-4 pb-4 pt-4 sm:px-5">
-                  <span className="pointer-events-none absolute -right-10 -top-12 h-36 w-36 rounded-full bg-orange-500/30 blur-3xl" />
+                  <span className="pointer-events-none absolute -right-10 -top-12 hidden h-36 w-36 rounded-full bg-orange-500/30 blur-3xl sm:block" />
                   <span
                     className="pointer-events-none absolute inset-0 opacity-[0.07]"
                     style={{
@@ -1058,31 +1043,44 @@ export default function Home() {
   const auth = getAuth();
   const startTo = auth ? dashboardFor(auth.role) : "/register";
 
-  // No sideways scroll / white strip on the right on phones.
-  useEffect(() => {
-    const html = document.documentElement;
-    const prevHtml = html.style.overflowX;
-    const prevBody = document.body.style.overflowX;
-    html.style.overflowX = "hidden";
-    document.body.style.overflowX = "hidden";
-    return () => {
-      html.style.overflowX = prevHtml;
-      document.body.style.overflowX = prevBody;
-    };
-  }, []);
-
   return (
-    <div className="flex min-h-screen w-full max-w-full flex-col overflow-x-hidden bg-slate-50">
+    // overflow-x: clip hides sideways overflow WITHOUT creating a scroll container
+    // (overflow-x: hidden on html/body is what made mobile scrolling janky).
+    <div
+      className="flex min-h-screen w-full max-w-full flex-col bg-slate-50"
+      style={{ overflowX: "clip" }}
+    >
       <style>{`
         @keyframes homeFade { from { opacity: 0; } to { opacity: 1; } }
         @keyframes homeZoom { from { opacity: 0; transform: scale(.94); } to { opacity: 1; transform: scale(1); } }
         @keyframes homeSlide { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes homeDrift { 0%, 100% { transform: translate3d(0,0,0) scale(1); } 50% { transform: translate3d(40px,-30px,0) scale(1.12); } }
         @keyframes homeSpin { to { transform: rotate(360deg); } }
+        @keyframes homeSpinRev { to { transform: rotate(-360deg); } }
         @keyframes homeCue { 0%, 100% { transform: translateY(0); opacity: .5; } 50% { transform: translateY(7px); opacity: 1; } }
         @keyframes homeShine { 0% { transform: translateX(-120%) skewX(-20deg); } 60%, 100% { transform: translateX(260%) skewX(-20deg); } }
+
+        /* Heavy background animations: desktop only, so phones scroll smoothly */
+        @media (min-width: 1024px) and (prefers-reduced-motion: no-preference) {
+          .home-drift-a { animation: homeDrift 14s ease-in-out infinite; }
+          .home-drift-b { animation: homeDrift 17s ease-in-out -4s infinite; }
+          .home-drift-c { animation: homeDrift 20s ease-in-out -8s infinite; }
+          .home-spin-a { animation: homeSpin 40s linear infinite; }
+          .home-spin-b { animation: homeSpinRev 60s linear infinite; }
+          .home-cue { animation: homeCue 1.8s ease-in-out infinite; }
+        }
+
+        /* Phones: backdrop-filter repaints on every scroll frame and makes text vanish while scrolling fast */
+        @media (max-width: 767px) {
+          .glass {
+            -webkit-backdrop-filter: none !important;
+            backdrop-filter: none !important;
+            background-color: rgba(255, 255, 255, 0.1) !important;
+          }
+        }
+
         @media (prefers-reduced-motion: reduce) {
-          [style*="homeDrift"], [style*="homeSpin"], [style*="homeCue"] { animation: none !important; }
+          .home-drift-a, .home-drift-b, .home-drift-c, .home-spin-a, .home-spin-b, .home-cue { animation: none !important; }
         }
       `}</style>
 
@@ -1092,23 +1090,14 @@ export default function Home() {
       <section className="relative overflow-hidden bg-brand-gradient">
         <div className="bg-grid-dark absolute inset-0" />
 
-        {/* animated aurora */}
-        <div
-          className="absolute -left-32 top-10 h-96 w-96 rounded-full bg-blue-500/35 blur-3xl"
-          style={{ animation: "homeDrift 14s ease-in-out infinite" }}
-        />
-        <div
-          className="absolute -bottom-32 right-0 h-[28rem] w-[28rem] rounded-full bg-orange-500/30 blur-3xl"
-          style={{ animation: "homeDrift 17s ease-in-out -4s infinite" }}
-        />
-        <div
-          className="absolute left-1/3 top-1/2 h-72 w-72 rounded-full bg-violet-500/20 blur-3xl"
-          style={{ animation: "homeDrift 20s ease-in-out -8s infinite" }}
-        />
+        {/* aurora blobs: static + lighter on phones, animated on desktop */}
+        <div className="home-drift-a absolute -left-24 top-6 h-64 w-64 rounded-full bg-blue-500/30 blur-2xl sm:-left-32 sm:top-10 sm:h-96 sm:w-96 sm:bg-blue-500/35 sm:blur-3xl" />
+        <div className="home-drift-b absolute -bottom-24 -right-16 h-72 w-72 rounded-full bg-orange-500/25 blur-2xl sm:-bottom-32 sm:right-0 sm:h-[28rem] sm:w-[28rem] sm:bg-orange-500/30 sm:blur-3xl" />
+        <div className="home-drift-c absolute left-1/3 top-1/2 hidden h-72 w-72 rounded-full bg-violet-500/20 blur-3xl sm:block" />
 
-        <div className="relative z-10 mx-auto grid max-w-7xl items-center gap-14 px-5 pb-14 pt-20 lg:grid-cols-2 lg:pb-16 lg:pt-28">
+        <div className="relative z-10 mx-auto grid max-w-7xl items-center gap-10 px-4 pb-10 pt-7 sm:gap-14 sm:px-5 sm:pb-14 sm:pt-16 lg:grid-cols-2 lg:pb-16 lg:pt-28">
           <div className="animate-rise text-center lg:text-left">
-            <div className="glass relative mb-6 inline-flex items-center gap-2 overflow-hidden rounded-full px-4 py-2 text-sm font-medium text-orange-200">
+            <div className="glass relative mb-5 inline-flex items-center gap-2 overflow-hidden rounded-full px-3.5 py-1.5 text-xs font-medium text-orange-200 sm:mb-6 sm:px-4 sm:py-2 sm:text-sm">
               <span
                 className="pointer-events-none absolute inset-y-0 left-0 w-1/3 bg-gradient-to-r from-transparent via-white/25 to-transparent"
                 style={{ animation: "homeShine 4.5s ease-in-out infinite" }}
@@ -1117,11 +1106,11 @@ export default function Home() {
               Meal ordering for homes, hostels and offices
             </div>
 
-            <h1 className="text-4xl font-extrabold leading-[1.1] text-white sm:text-5xl lg:text-6xl">
+            <h1 className="text-[2rem] font-extrabold leading-[1.12] text-white sm:text-5xl lg:text-6xl">
               Every meal of the day, ordered in <span className="text-gradient">one place.</span>
             </h1>
 
-            <p className="mx-auto mt-6 max-w-xl text-lg leading-relaxed text-blue-100/80 lg:mx-0">
+            <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-blue-100/80 sm:mt-6 sm:text-lg lg:mx-0">
               ORION FoodOrder lets you plan breakfast, lunch and dinner, pay by UPI, and follow each order in
               real time.
             </p>
@@ -1131,7 +1120,7 @@ export default function Home() {
               <RotatingMeal />
             </div>
 
-            <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row lg:justify-start">
+            <div className="mt-7 flex flex-col justify-center gap-3 sm:mt-8 sm:flex-row lg:justify-start">
               <Link to={startTo} className="btn-primary group relative overflow-hidden px-8 py-3.5">
                 <span
                   className="pointer-events-none absolute inset-y-0 left-0 w-1/3 bg-gradient-to-r from-transparent via-white/40 to-transparent"
@@ -1145,7 +1134,7 @@ export default function Home() {
               </Link>
             </div>
 
-            <ul className="mt-9 flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm text-blue-100/80 lg:justify-start">
+            <ul className="mt-7 flex flex-wrap justify-center gap-x-5 gap-y-2 text-[13px] text-blue-100/80 sm:mt-9 sm:gap-x-6 sm:text-sm lg:justify-start">
               {["UPI & GPay payments", "Live order tracking", "Separate staff and admin panels"].map((t) => (
                 <li key={t} className="flex items-center gap-2">
                   <FaCheckCircle className="text-orange-500" /> {t}
@@ -1156,16 +1145,14 @@ export default function Home() {
 
           <div className="animate-rise delay-200">
             <div className="relative">
-              {/* rotating dashed rings */}
+              {/* rotating dashed rings (desktop only) */}
               <span
                 aria-hidden="true"
-                className="pointer-events-none absolute left-1/2 top-1/2 hidden h-[118%] w-[118%] -translate-x-1/2 -translate-y-1/2 rounded-full border border-dashed border-white/20 sm:block"
-                style={{ animation: "homeSpin 40s linear infinite" }}
+                className="home-spin-a pointer-events-none absolute left-1/2 top-1/2 hidden h-[118%] w-[118%] -translate-x-1/2 -translate-y-1/2 rounded-full border border-dashed border-white/20 lg:block"
               />
               <span
                 aria-hidden="true"
-                className="pointer-events-none absolute left-1/2 top-1/2 hidden h-[135%] w-[135%] -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/10 sm:block"
-                style={{ animation: "homeSpin 60s linear reverse infinite" }}
+                className="home-spin-b pointer-events-none absolute left-1/2 top-1/2 hidden h-[135%] w-[135%] -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/10 lg:block"
               />
               <Tilt>
                 <SampleOrderCard />
@@ -1175,29 +1162,29 @@ export default function Home() {
         </div>
 
         {/* stats strip */}
-        <div className="relative z-10 mx-auto max-w-7xl px-5 pb-16 lg:pb-20">
-          <div className="glass mx-auto grid max-w-3xl grid-cols-3 divide-x divide-white/10 rounded-3xl py-4 sm:py-5">
+        <div className="relative z-10 mx-auto max-w-7xl px-4 pb-12 sm:px-5 sm:pb-16 lg:pb-20">
+          <div className="mx-auto grid max-w-3xl grid-cols-3 gap-2.5 sm:gap-4">
             {HERO_STATS.map((s) => (
-              <div key={s.label} className="px-2 text-center sm:px-4">
-                <p className="text-xl" aria-hidden="true">
+              <div
+                key={s.label}
+                className={`rounded-2xl bg-gradient-to-b px-1.5 py-3.5 text-center ring-1 ring-white/20 sm:rounded-3xl sm:px-4 sm:py-5 ${s.tile}`}
+              >
+                <p className="text-xl leading-none sm:text-2xl" aria-hidden="true">
                   {s.emoji}
                 </p>
-                <p className="mt-1 font-display text-2xl font-extrabold text-white sm:text-3xl">
+                <p className="mt-2 font-display text-2xl font-extrabold leading-none text-white sm:text-3xl">
                   <CountUp to={s.value} />
-                  <span className="text-orange-300">{s.suffix}</span>
+                  <span className="text-sm text-orange-300 sm:text-base">{s.suffix}</span>
                 </p>
-                <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-100/70 sm:text-xs">
+                <p className="mt-1.5 text-[10px] font-semibold uppercase leading-tight tracking-wide text-blue-100/80 sm:text-xs">
                   {s.label}
                 </p>
               </div>
             ))}
           </div>
 
-          <div className="mt-8 hidden justify-center md:flex" aria-hidden="true">
-            <span
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-xs text-white ring-1 ring-white/25"
-              style={{ animation: "homeCue 1.8s ease-in-out infinite" }}
-            >
+          <div className="mt-8 hidden justify-center lg:flex" aria-hidden="true">
+            <span className="home-cue flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-xs text-white ring-1 ring-white/25">
               <FaChevronDown />
             </span>
           </div>
@@ -1205,18 +1192,20 @@ export default function Home() {
       </section>
 
       {/* ============ ABOUT ============ */}
-      <section className="relative z-10 mx-auto w-full max-w-7xl px-5 py-20 sm:py-24">
+      <section className="relative z-10 mx-auto w-full max-w-7xl px-4 py-16 sm:px-5 sm:py-24">
         <Reveal>
           <div className="overflow-hidden rounded-3xl bg-white shadow-xl ring-1 ring-slate-900/5 md:grid md:grid-cols-2">
-            <div className="group relative flex min-h-[280px] items-center justify-center overflow-hidden bg-gradient-to-br from-orange-50 via-white to-blue-50 p-4 md:min-h-[460px] lg:p-6">
+            <div className="group relative flex min-h-[260px] items-center justify-center overflow-hidden bg-gradient-to-br from-orange-50 via-white to-blue-50 p-4 md:min-h-[460px] lg:p-6">
               <img
                 src={about1}
                 alt="Orion Foods – Homely & Healthy Food"
                 className="h-auto max-h-[560px] w-full rounded-2xl object-contain transition duration-700 group-hover:scale-[1.03]"
+                loading="lazy"
+                decoding="async"
               />
             </div>
 
-            <div className="flex flex-col justify-center p-8 sm:p-10 lg:p-14">
+            <div className="flex flex-col justify-center p-7 sm:p-10 lg:p-14">
               <div className="mb-5 inline-flex items-center gap-2 self-start rounded-full bg-orange-50 px-3.5 py-1.5 text-xs font-semibold text-orange-700 ring-1 ring-orange-200">
                 <span className="h-1.5 w-1.5 rounded-full bg-orange-500" />
                 About Orion Foods
@@ -1262,17 +1251,18 @@ export default function Home() {
       <MenuShowcase />
 
       {/* ============ KITCHEN ============ */}
-      <section className="relative z-10 mx-auto w-full max-w-7xl px-5 py-20 sm:py-24">
+      <section className="relative z-10 mx-auto w-full max-w-7xl px-4 py-16 sm:px-5 sm:py-24">
         <div className="grid items-center gap-10 md:grid-cols-2 lg:gap-16">
           <Reveal x={-40} y={20}>
             <div className="relative mx-auto w-full max-w-md">
-              <div className="absolute inset-0 scale-90 rounded-full bg-gradient-to-br from-orange-300/40 to-blue-300/40 blur-3xl" />
+              <div className="absolute inset-0 hidden scale-90 rounded-full bg-gradient-to-br from-orange-300/40 to-blue-300/40 blur-3xl sm:block" />
               <div className="relative flex items-center justify-center rounded-3xl bg-white p-8 shadow-xl ring-1 ring-slate-900/5 sm:p-10">
                 <img
                   src={CHEF_LOGO}
                   alt="Orion Foods chef"
                   className="h-auto max-h-[380px] w-full object-contain transition duration-500 hover:scale-105"
                   decoding="async"
+                  loading="lazy"
                 />
               </div>
             </div>
@@ -1315,18 +1305,18 @@ export default function Home() {
       </section>
 
       {/* ============ FEATURES ============ */}
-      <section className="relative z-10 mx-auto w-full max-w-7xl px-5 py-24">
-        <Reveal className="mb-14 max-w-2xl">
+      <section className="relative z-10 mx-auto w-full max-w-7xl px-4 py-16 sm:px-5 sm:py-24">
+        <Reveal className="mb-10 max-w-2xl sm:mb-14">
           <h2 className="text-3xl font-bold sm:text-4xl">Built for the way people actually eat</h2>
-          <p className="mt-4 text-lg text-slate-500">
+          <p className="mt-4 text-base text-slate-500 sm:text-lg">
             One platform for the person ordering, the team cooking and the admin keeping the books.
           </p>
         </Reveal>
 
         <div className="grid gap-5 md:grid-cols-6">
           <Reveal className="md:col-span-4">
-            <div className="group relative h-full overflow-hidden rounded-3xl bg-[#0b1b3f] p-8 text-white transition duration-300 hover:-translate-y-1 hover:shadow-2xl hover:shadow-blue-900/30">
-              <div className="absolute -right-10 -top-10 h-48 w-48 rounded-full bg-blue-600/40 blur-3xl" />
+            <div className="group relative h-full overflow-hidden rounded-3xl bg-[#0b1b3f] p-7 text-white transition duration-300 hover:-translate-y-1 hover:shadow-2xl hover:shadow-blue-900/30 sm:p-8">
+              <div className="absolute -right-10 -top-10 h-48 w-48 rounded-full bg-blue-600/40 blur-2xl sm:blur-3xl" />
               <div className="bg-grid-dark absolute inset-0 opacity-60" />
               <span className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 text-2xl text-orange-300 ring-1 ring-white/10">
                 <MdOutlineFastfood />
@@ -1350,7 +1340,7 @@ export default function Home() {
           </Reveal>
 
           <Reveal className="md:col-span-2" delay={120}>
-            <div className="h-full rounded-3xl border border-orange-200 bg-gradient-to-br from-orange-50 to-orange-100 p-8 transition duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-orange-500/15">
+            <div className="h-full rounded-3xl border border-orange-200 bg-gradient-to-br from-orange-50 to-orange-100 p-7 transition duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-orange-500/15 sm:p-8">
               <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-orange-500 text-2xl text-white shadow-lg shadow-orange-500/30">
                 <MdPayment />
               </span>
@@ -1362,7 +1352,7 @@ export default function Home() {
           </Reveal>
 
           <Reveal className="md:col-span-2">
-            <div className="card h-full p-8 transition duration-300 hover:-translate-y-1 hover:shadow-xl">
+            <div className="card h-full p-7 transition duration-300 hover:-translate-y-1 hover:shadow-xl sm:p-8">
               <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-2xl text-blue-700">
                 <FaBolt />
               </span>
@@ -1382,7 +1372,7 @@ export default function Home() {
           </Reveal>
 
           <Reveal className="md:col-span-4" delay={120}>
-            <div className="card h-full p-8 transition duration-300 hover:shadow-xl">
+            <div className="card h-full p-7 transition duration-300 hover:shadow-xl sm:p-8">
               <h3 className="text-xl font-bold">A dashboard for every role</h3>
               <p className="mt-2 text-sm text-slate-500">Each person signs in and sees only what they need.</p>
               <div className="mt-6 grid gap-3 sm:grid-cols-3">
@@ -1405,13 +1395,13 @@ export default function Home() {
       </section>
 
       {/* ============ STEPS ============ */}
-      <section className="border-y border-slate-200 bg-white py-24">
-        <div className="mx-auto max-w-7xl px-5">
+      <section className="border-y border-slate-200 bg-white py-16 sm:py-24">
+        <div className="mx-auto max-w-7xl px-4 sm:px-5">
           <Reveal>
             <h2 className="max-w-xl text-3xl font-bold sm:text-4xl">Your first order in three steps</h2>
           </Reveal>
 
-          <ol className="mt-14 grid gap-10 md:grid-cols-3">
+          <ol className="mt-10 grid gap-10 sm:mt-14 md:grid-cols-3">
             {STEPS.map((s, i) => (
               <li key={s.title} className="relative">
                 {i < STEPS.length - 1 && (
@@ -1431,11 +1421,11 @@ export default function Home() {
       </section>
 
       {/* ============ CTA ============ */}
-      <section className="px-5 py-24">
+      <section className="px-4 py-16 sm:px-5 sm:py-24">
         <Reveal scale={0.96} y={40}>
-          <div className="relative mx-auto max-w-5xl overflow-hidden rounded-3xl bg-brand-gradient px-8 py-16 text-center sm:px-16">
+          <div className="relative mx-auto max-w-5xl overflow-hidden rounded-3xl bg-brand-gradient px-6 py-14 text-center sm:px-16 sm:py-16">
             <div className="bg-grid-dark absolute inset-0" />
-            <div className="absolute -bottom-20 left-1/2 h-64 w-96 -translate-x-1/2 rounded-full bg-orange-500/40 blur-3xl" />
+            <div className="absolute -bottom-20 left-1/2 h-64 w-96 -translate-x-1/2 rounded-full bg-orange-500/40 blur-2xl sm:blur-3xl" />
             <div className="relative z-10">
               <h2 className="text-3xl font-bold text-white sm:text-4xl">Ready to simplify your daily meals?</h2>
               <p className="mx-auto mt-4 max-w-xl text-blue-100/80">
