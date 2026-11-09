@@ -13,9 +13,13 @@ import {
   FaWallet,
   FaUser,
   FaUtensils,
+  FaExclamationTriangle,
 } from "react-icons/fa";
 import { logo } from "../assets";
-import { MIN_BALANCE, formatINR } from "../assets/utils/pricing";
+import { formatINR } from "../assets/utils/pricing";
+
+// Wallet turns red and starts the alert animation below this amount.
+const LOW_BALANCE_LIMIT = 500;
 
 const ROLE_LINK = {
   admin: { to: "/admin", label: "Admin", icon: FaUserShield },
@@ -76,10 +80,19 @@ export default function Navbar() {
     setOpen(false);
   }, [location.pathname]);
 
-  // Shrink + deepen the shadow once the page is scrolled.
+  // Only the shadow changes on scroll (never the height), so the navbar stays perfectly stable.
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 8);
-    onScroll();
+    let ticking = false;
+    const update = () => {
+      ticking = false;
+      setScrolled(window.scrollY > 8);
+    };
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(update);
+    };
+    update();
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
@@ -102,39 +115,71 @@ export default function Navbar() {
   const displayName = profile?.name || user?.name || "";
   const initial = displayName.trim().charAt(0).toUpperCase() || "U";
   const balance = Number(profile?.currentBalance || 0);
-  const lowBalance = Boolean(profile) && balance < MIN_BALANCE;
+  const lowBalance = Boolean(profile) && balance < LOW_BALANCE_LIMIT;
 
   const navLinkClass = ({ isActive }) =>
-    `group relative inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold transition-all duration-300 ${
+    `group relative inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold transition-colors duration-300 ${
       isActive
         ? "bg-white/10 text-white ring-1 ring-white/15 shadow-inner"
-        : "text-blue-100/80 hover:-translate-y-0.5 hover:bg-white/10 hover:text-white"
+        : "text-blue-100/80 hover:bg-white/10 hover:text-white"
     }`;
 
-  // Small round icon button used on mobile (dashboard / wallet / profile).
+  // Small icon button used on mobile (dashboard / profile).
   const mobileIconClass = ({ isActive }) =>
-    `flex h-9 min-w-[2.25rem] flex-col items-center justify-center rounded-xl text-sm shadow-sm ring-1 transition-all duration-300 active:scale-90 sm:h-10 sm:min-w-[2.5rem] ${
+    `flex h-9 min-w-[2.25rem] flex-col items-center justify-center rounded-xl text-sm shadow-sm ring-1 transition-colors duration-300 active:scale-90 sm:h-10 sm:min-w-[2.5rem] ${
       isActive
+        ? "bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white shadow-lg shadow-fuchsia-500/40 ring-violet-200/50"
+        : "bg-white/10 text-violet-300 ring-white/15 hover:bg-white/20"
+    }`;
+
+  // Wallet button on mobile: turns red + alert animation when the balance is low.
+  const walletMobileClass = ({ isActive }) =>
+    `relative flex h-9 min-w-[2.25rem] flex-col items-center justify-center gap-0.5 rounded-xl px-1.5 text-sm shadow-sm ring-1 transition-colors duration-300 active:scale-90 sm:h-10 sm:min-w-[2.5rem] ${
+      lowBalance
+        ? "nav-low-shake bg-gradient-to-br from-red-500 to-rose-600 text-white shadow-lg shadow-red-500/50 ring-red-300/60"
+        : isActive
         ? "bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white shadow-lg shadow-fuchsia-500/40 ring-violet-200/50"
         : "bg-white/10 text-violet-300 ring-white/15 hover:bg-white/20"
     }`;
 
   return (
     <header
-      className={`sticky top-0 z-50 border-b border-white/10 bg-[#0b1b3f]/85 backdrop-blur-xl transition-all duration-300 ${
+      className={`sticky top-0 z-50 border-b border-white/10 bg-[#0b1b3f] transition-shadow duration-300 md:bg-[#0b1b3f]/85 md:backdrop-blur-xl ${
         scrolled ? "shadow-xl shadow-black/30" : "shadow-md shadow-black/10"
       }`}
+      style={{ transform: "translateZ(0)", WebkitTransform: "translateZ(0)" }}
     >
+      <style>{`
+        @keyframes navLowShake {
+          0%, 86%, 100% { transform: translateX(0) rotate(0); }
+          88% { transform: translateX(-2px) rotate(-5deg); }
+          91% { transform: translateX(2px) rotate(5deg); }
+          94% { transform: translateX(-2px) rotate(-4deg); }
+          97% { transform: translateX(2px) rotate(4deg); }
+        }
+        @keyframes navLowRing {
+          0% { transform: scale(1); opacity: .65; }
+          100% { transform: scale(1.7); opacity: 0; }
+        }
+        @keyframes navLowBlink {
+          0%, 100% { opacity: 1; }
+          50% { opacity: .35; }
+        }
+        .nav-low-shake { animation: navLowShake 3.2s ease-in-out infinite; }
+        .nav-low-ring { animation: navLowRing 1.6s ease-out infinite; }
+        .nav-low-blink { animation: navLowBlink 1.1s ease-in-out infinite; }
+        @media (prefers-reduced-motion: reduce) {
+          .nav-low-shake, .nav-low-ring, .nav-low-blink { animation: none !important; }
+        }
+      `}</style>
+
       {/* top accent line */}
       <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-violet-500 via-fuchsia-400 to-orange-400" />
-      {/* soft glow */}
-      <div className="pointer-events-none absolute -top-10 right-10 h-24 w-48 rounded-full bg-violet-400/20 blur-3xl" />
+      {/* soft glow (desktop only, blur is heavy on phones) */}
+      <div className="pointer-events-none absolute -top-10 right-10 hidden h-24 w-48 rounded-full bg-violet-400/20 blur-3xl md:block" />
 
-      <nav
-        className={`relative mx-auto flex max-w-7xl items-center justify-between gap-2 px-3 transition-all duration-300 sm:px-6 ${
-          scrolled ? "h-14" : "h-16"
-        }`}
-      >
+      {/* fixed height: never changes while scrolling */}
+      <nav className="relative mx-auto flex h-14 max-w-7xl items-center justify-between gap-2 px-3 sm:h-16 sm:px-6">
         <Link to="/" className="group flex min-w-0 items-center gap-2.5">
           <span className="flex h-10 w-10 flex-none items-center justify-center overflow-hidden rounded-xl bg-white shadow-lg shadow-black/20 ring-2 ring-violet-300/60 transition duration-300 group-hover:rotate-6 group-hover:scale-105">
             <img src={logo} alt="ORION Foods logo" className="h-7 w-7 object-contain" />
@@ -171,18 +216,33 @@ export default function Navbar() {
                   to={l.to}
                   end={l.end}
                   aria-label={l.label}
-                  title={l.label}
-                  className={navLinkClass}
+                  title={isWallet && lowBalance ? "Low balance – please recharge" : l.label}
+                  className={(s) =>
+                    `${navLinkClass(s)} ${
+                      isWallet && lowBalance ? "bg-red-500/15 ring-1 ring-red-400/50 hover:bg-red-500/25" : ""
+                    }`
+                  }
                 >
                   {({ isActive }) => (
                     <>
-                      <l.icon className={`text-xs transition ${isActive ? "text-violet-300" : "text-violet-300/70 group-hover:text-violet-300"}`} />
+                      {isWallet && lowBalance ? (
+                        <span className="relative flex h-4 w-4 items-center justify-center">
+                          <span className="nav-low-ring absolute inset-0 rounded-full bg-red-500" />
+                          <FaExclamationTriangle className="nav-low-blink relative text-xs text-red-300" />
+                        </span>
+                      ) : (
+                        <l.icon
+                          className={`text-xs transition ${
+                            isActive ? "text-violet-300" : "text-violet-300/70 group-hover:text-violet-300"
+                          }`}
+                        />
+                      )}
                       {!isWallet && l.label}
                       {isWallet && profile && (
                         <span
                           className={`rounded-full px-2 py-0.5 text-xs font-bold ${
                             lowBalance
-                              ? "bg-red-500/20 text-red-200 ring-1 ring-red-400/40"
+                              ? "nav-low-shake bg-red-500 text-white shadow-md shadow-red-500/40 ring-1 ring-red-300/60"
                               : "bg-violet-400/20 text-violet-100 ring-1 ring-violet-300/40"
                           }`}
                         >
@@ -190,7 +250,11 @@ export default function Navbar() {
                         </span>
                       )}
                       {isActive && (
-                        <span className="absolute inset-x-3 -bottom-0.5 h-0.5 rounded-full bg-gradient-to-r from-violet-300 to-fuchsia-300" />
+                        <span
+                          className={`absolute inset-x-3 -bottom-0.5 h-0.5 rounded-full bg-gradient-to-r ${
+                            isWallet && lowBalance ? "from-red-300 to-rose-300" : "from-violet-300 to-fuchsia-300"
+                          }`}
+                        />
                       )}
                     </>
                   )}
@@ -244,15 +308,23 @@ export default function Navbar() {
 
               <NavLink
                 to="/customer/details"
-                aria-label="Wallet"
-                className={(s) => `${mobileIconClass(s)} gap-0.5 px-1.5`}
+                aria-label={lowBalance ? "Wallet – low balance" : "Wallet"}
+                className={walletMobileClass}
               >
                 {({ isActive }) => (
                   <>
+                    {lowBalance && (
+                      <span className="pointer-events-none absolute -right-1 -top-1 flex h-3.5 w-3.5">
+                        <span className="nav-low-ring absolute inset-0 rounded-full bg-red-400" />
+                        <span className="relative flex h-3.5 w-3.5 items-center justify-center rounded-full bg-white text-red-600 ring-1 ring-red-300">
+                          <FaExclamationTriangle className="text-[7px]" />
+                        </span>
+                      </span>
+                    )}
                     <FaWallet className="text-[13px]" />
                     <span
                       className={`text-[9px] font-extrabold leading-none ${
-                        isActive ? "text-white" : lowBalance ? "text-red-300" : "text-violet-100"
+                        lowBalance || isActive ? "text-white" : "text-violet-100"
                       }`}
                     >
                       {profile ? formatINR(balance) : "…"}
@@ -282,7 +354,7 @@ export default function Navbar() {
 
       {/* ---------------- mobile menu (smooth open/close) ---------------- */}
       <div
-        className={`absolute inset-x-0 top-full overflow-hidden border-b border-white/10 bg-[#0b1b3f]/95 shadow-2xl shadow-black/40 backdrop-blur-xl transition-all duration-300 ease-out md:hidden ${
+        className={`absolute inset-x-0 top-full overflow-hidden border-b border-white/10 bg-[#0b1b3f] shadow-2xl shadow-black/40 transition-[max-height,opacity] duration-300 ease-out md:hidden ${
           open ? "max-h-[34rem] opacity-100" : "pointer-events-none max-h-0 opacity-0"
         }`}
       >
@@ -324,12 +396,39 @@ export default function Navbar() {
               </div>
 
               {isCustomer &&
-                CUSTOMER_LINKS.map((l) => (
-                  <NavLink key={l.to} to={l.to} end={l.end} className={(s) => `${navLinkClass(s)} w-full py-3`}>
-                    <l.icon className="text-xs text-violet-300" />
-                    {l.label}
-                  </NavLink>
-                ))}
+                CUSTOMER_LINKS.map((l) => {
+                  const isWallet = l.label === "Wallet";
+                  return (
+                    <NavLink
+                      key={l.to}
+                      to={l.to}
+                      end={l.end}
+                      className={(s) =>
+                        `${navLinkClass(s)} w-full py-3 ${
+                          isWallet && lowBalance ? "bg-red-500/15 ring-1 ring-red-400/50" : ""
+                        }`
+                      }
+                    >
+                      {isWallet && lowBalance ? (
+                        <FaExclamationTriangle className="nav-low-blink text-xs text-red-300" />
+                      ) : (
+                        <l.icon className="text-xs text-violet-300" />
+                      )}
+                      {l.label}
+                      {isWallet && profile && (
+                        <span
+                          className={`ml-auto rounded-full px-2.5 py-0.5 text-xs font-bold ${
+                            lowBalance
+                              ? "bg-red-500 text-white ring-1 ring-red-300/60"
+                              : "bg-violet-400/20 text-violet-100 ring-1 ring-violet-300/40"
+                          }`}
+                        >
+                          {formatINR(balance)}
+                        </span>
+                      )}
+                    </NavLink>
+                  );
+                })}
 
               {!isCustomer && roleLink && (
                 <NavLink to={roleLink.to} className={(s) => `${navLinkClass(s)} w-full py-3`}>
