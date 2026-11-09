@@ -18,7 +18,7 @@ import {
 import { logo } from "../assets";
 import { formatINR } from "../assets/utils/pricing";
 
-// Wallet amount turns red and shows the soft alert animation below this amount.
+// Wallet amount turns bright red and shows the soft alert animation below this amount.
 const LOW_BALANCE_LIMIT = 500;
 
 const ROLE_LINK = {
@@ -137,8 +137,8 @@ export default function Navbar() {
     `relative flex h-9 min-w-[2.25rem] flex-col items-center justify-center gap-0.5 rounded-xl px-1.5 text-sm shadow-sm ring-1 transition-colors duration-300 active:scale-90 sm:h-10 sm:min-w-[2.5rem] ${
       lowBalance
         ? isActive
-          ? "bg-white/15 text-violet-200 ring-violet-300/60"
-          : "bg-white/10 text-violet-300 ring-white/15 hover:bg-white/20"
+          ? "bg-black/30 text-violet-200 ring-violet-300/60"
+          : "bg-black/25 text-violet-300 ring-white/15 hover:bg-black/35"
         : isActive
         ? "bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white shadow-lg shadow-fuchsia-500/40 ring-violet-200/50"
         : "bg-white/10 text-violet-300 ring-white/15 hover:bg-white/20"
@@ -157,10 +157,10 @@ export default function Navbar() {
           0% { transform: scale(1); opacity: .55; }
           70%, 100% { transform: scale(2.1); opacity: 0; }
         }
-        /* gentle breathing for the red amount / alert icon */
+        /* gentle breathing for the red amount / alert icon (stays clearly visible) */
         @keyframes navLowBreathe {
           0%, 100% { transform: scale(1); opacity: 1; }
-          50% { transform: scale(1.07); opacity: .78; }
+          50% { transform: scale(1.07); opacity: .9; }
         }
         /* very light sway of the wallet icon, rests most of the time */
         @keyframes navLowSway {
@@ -172,6 +172,18 @@ export default function Navbar() {
         .nav-low-ring { animation: navLowRing 2s cubic-bezier(.2,.6,.3,1) infinite; }
         .nav-low-breathe { animation: navLowBreathe 2.4s ease-in-out infinite; will-change: transform, opacity; }
         .nav-low-sway { animation: navLowSway 3.6s ease-in-out infinite; transform-origin: 50% 20%; }
+
+        /* bright red text with a soft glow so it stays readable on the dark navbar */
+        .nav-low-text {
+          color: #ff4d4d;
+          font-weight: 800;
+          text-shadow: 0 0 8px rgba(255, 77, 77, 0.6), 0 0 2px rgba(255, 77, 77, 0.8);
+        }
+        .nav-low-icon {
+          color: #ff4d4d;
+          filter: drop-shadow(0 0 4px rgba(255, 77, 77, 0.7));
+        }
+
         @media (prefers-reduced-motion: reduce) {
           .nav-low-ring, .nav-low-breathe, .nav-low-sway { animation: none !important; }
         }
@@ -228,7 +240,7 @@ export default function Navbar() {
                       {isWallet && lowBalance ? (
                         <span className="relative flex h-4 w-4 items-center justify-center">
                           <span className="nav-low-ring absolute inset-0 rounded-full bg-red-500/60" />
-                          <FaExclamationTriangle className="nav-low-breathe relative text-xs text-red-400" />
+                          <FaExclamationTriangle className="nav-low-breathe nav-low-icon relative text-xs" />
                         </span>
                       ) : (
                         <l.icon
@@ -240,10 +252,10 @@ export default function Navbar() {
                       {!isWallet && l.label}
                       {isWallet && profile && (
                         <span
-                          className={`rounded-full px-2 py-0.5 text-xs font-bold ${
+                          className={`rounded-full px-2 py-0.5 text-xs font-bold ring-1 ${
                             lowBalance
-                              ? "nav-low-breathe bg-violet-400/20 text-red-400 ring-1 ring-violet-300/40"
-                              : "bg-violet-400/20 text-violet-100 ring-1 ring-violet-300/40"
+                              ? "nav-low-breathe nav-low-text bg-black/25 ring-violet-300/40"
+                              : "bg-violet-400/20 text-violet-100 ring-violet-300/40"
                           }`}
                         >
                           {formatINR(balance)}
@@ -319,8 +331,10 @@ export default function Navbar() {
                     )}
                     <FaWallet className={`text-[13px] ${lowBalance ? "nav-low-sway" : ""}`} />
                     <span
-                      className={`text-[9px] font-extrabold leading-none ${
-                        lowBalance ? "nav-low-breathe text-red-400" : isActive ? "text-white" : "text-violet-100"
+                      className={`text-[10px] leading-none ${
+                        lowBalance
+                          ? "nav-low-breathe nav-low-text"
+                          : `font-extrabold ${isActive ? "text-white" : "text-violet-100"}`
                       }`}
                     >
                       {profile ? formatINR(balance) : "…"}
@@ -404,7 +418,7 @@ export default function Navbar() {
                       {isWallet && lowBalance ? (
                         <span className="relative flex h-4 w-4 items-center justify-center">
                           <span className="nav-low-ring absolute inset-0 rounded-full bg-red-500/60" />
-                          <FaExclamationTriangle className="nav-low-breathe relative text-xs text-red-400" />
+                          <FaExclamationTriangle className="nav-low-breathe nav-low-icon relative text-xs" />
                         </span>
                       ) : (
                         <l.icon className="text-xs text-violet-300" />
@@ -414,7 +428,7 @@ export default function Navbar() {
                         <span
                           className={`ml-auto rounded-full px-2.5 py-0.5 text-xs font-bold ring-1 ${
                             lowBalance
-                              ? "nav-low-breathe bg-violet-400/20 text-red-400 ring-violet-300/40"
+                              ? "nav-low-breathe nav-low-text bg-black/25 ring-violet-300/40"
                               : "bg-violet-400/20 text-violet-100 ring-violet-300/40"
                           }`}
                         >
