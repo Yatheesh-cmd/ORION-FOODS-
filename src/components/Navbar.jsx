@@ -18,7 +18,7 @@ import {
 import { logo } from "../assets";
 import { formatINR } from "../assets/utils/pricing";
 
-// Wallet turns red and starts the alert animation below this amount.
+// Wallet amount turns red and shows the soft alert animation below this amount.
 const LOW_BALANCE_LIMIT = 500;
 
 const ROLE_LINK = {
@@ -132,11 +132,13 @@ export default function Navbar() {
         : "bg-white/10 text-violet-300 ring-white/15 hover:bg-white/20"
     }`;
 
-  // Wallet button on mobile: turns red + alert animation when the balance is low.
+  // Wallet button on mobile: same look always, only the amount text turns red when low.
   const walletMobileClass = ({ isActive }) =>
     `relative flex h-9 min-w-[2.25rem] flex-col items-center justify-center gap-0.5 rounded-xl px-1.5 text-sm shadow-sm ring-1 transition-colors duration-300 active:scale-90 sm:h-10 sm:min-w-[2.5rem] ${
       lowBalance
-        ? "nav-low-shake bg-gradient-to-br from-red-500 to-rose-600 text-white shadow-lg shadow-red-500/50 ring-red-300/60"
+        ? isActive
+          ? "bg-white/15 text-violet-200 ring-violet-300/60"
+          : "bg-white/10 text-violet-300 ring-white/15 hover:bg-white/20"
         : isActive
         ? "bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white shadow-lg shadow-fuchsia-500/40 ring-violet-200/50"
         : "bg-white/10 text-violet-300 ring-white/15 hover:bg-white/20"
@@ -150,26 +152,28 @@ export default function Navbar() {
       style={{ transform: "translateZ(0)", WebkitTransform: "translateZ(0)" }}
     >
       <style>{`
-        @keyframes navLowShake {
-          0%, 86%, 100% { transform: translateX(0) rotate(0); }
-          88% { transform: translateX(-2px) rotate(-5deg); }
-          91% { transform: translateX(2px) rotate(5deg); }
-          94% { transform: translateX(-2px) rotate(-4deg); }
-          97% { transform: translateX(2px) rotate(4deg); }
-        }
+        /* soft expanding ring behind the alert badge */
         @keyframes navLowRing {
-          0% { transform: scale(1); opacity: .65; }
-          100% { transform: scale(1.7); opacity: 0; }
+          0% { transform: scale(1); opacity: .55; }
+          70%, 100% { transform: scale(2.1); opacity: 0; }
         }
-        @keyframes navLowBlink {
-          0%, 100% { opacity: 1; }
-          50% { opacity: .35; }
+        /* gentle breathing for the red amount / alert icon */
+        @keyframes navLowBreathe {
+          0%, 100% { transform: scale(1); opacity: 1; }
+          50% { transform: scale(1.07); opacity: .78; }
         }
-        .nav-low-shake { animation: navLowShake 3.2s ease-in-out infinite; }
-        .nav-low-ring { animation: navLowRing 1.6s ease-out infinite; }
-        .nav-low-blink { animation: navLowBlink 1.1s ease-in-out infinite; }
+        /* very light sway of the wallet icon, rests most of the time */
+        @keyframes navLowSway {
+          0%, 55%, 100% { transform: rotate(0deg); }
+          65% { transform: rotate(-9deg); }
+          77% { transform: rotate(8deg); }
+          89% { transform: rotate(-4deg); }
+        }
+        .nav-low-ring { animation: navLowRing 2s cubic-bezier(.2,.6,.3,1) infinite; }
+        .nav-low-breathe { animation: navLowBreathe 2.4s ease-in-out infinite; will-change: transform, opacity; }
+        .nav-low-sway { animation: navLowSway 3.6s ease-in-out infinite; transform-origin: 50% 20%; }
         @media (prefers-reduced-motion: reduce) {
-          .nav-low-shake, .nav-low-ring, .nav-low-blink { animation: none !important; }
+          .nav-low-ring, .nav-low-breathe, .nav-low-sway { animation: none !important; }
         }
       `}</style>
 
@@ -217,18 +221,14 @@ export default function Navbar() {
                   end={l.end}
                   aria-label={l.label}
                   title={isWallet && lowBalance ? "Low balance – please recharge" : l.label}
-                  className={(s) =>
-                    `${navLinkClass(s)} ${
-                      isWallet && lowBalance ? "bg-red-500/15 ring-1 ring-red-400/50 hover:bg-red-500/25" : ""
-                    }`
-                  }
+                  className={navLinkClass}
                 >
                   {({ isActive }) => (
                     <>
                       {isWallet && lowBalance ? (
                         <span className="relative flex h-4 w-4 items-center justify-center">
-                          <span className="nav-low-ring absolute inset-0 rounded-full bg-red-500" />
-                          <FaExclamationTriangle className="nav-low-blink relative text-xs text-red-300" />
+                          <span className="nav-low-ring absolute inset-0 rounded-full bg-red-500/60" />
+                          <FaExclamationTriangle className="nav-low-breathe relative text-xs text-red-400" />
                         </span>
                       ) : (
                         <l.icon
@@ -242,7 +242,7 @@ export default function Navbar() {
                         <span
                           className={`rounded-full px-2 py-0.5 text-xs font-bold ${
                             lowBalance
-                              ? "nav-low-shake bg-red-500 text-white shadow-md shadow-red-500/40 ring-1 ring-red-300/60"
+                              ? "nav-low-breathe bg-violet-400/20 text-red-400 ring-1 ring-violet-300/40"
                               : "bg-violet-400/20 text-violet-100 ring-1 ring-violet-300/40"
                           }`}
                         >
@@ -250,11 +250,7 @@ export default function Navbar() {
                         </span>
                       )}
                       {isActive && (
-                        <span
-                          className={`absolute inset-x-3 -bottom-0.5 h-0.5 rounded-full bg-gradient-to-r ${
-                            isWallet && lowBalance ? "from-red-300 to-rose-300" : "from-violet-300 to-fuchsia-300"
-                          }`}
-                        />
+                        <span className="absolute inset-x-3 -bottom-0.5 h-0.5 rounded-full bg-gradient-to-r from-violet-300 to-fuchsia-300" />
                       )}
                     </>
                   )}
@@ -315,16 +311,16 @@ export default function Navbar() {
                   <>
                     {lowBalance && (
                       <span className="pointer-events-none absolute -right-1 -top-1 flex h-3.5 w-3.5">
-                        <span className="nav-low-ring absolute inset-0 rounded-full bg-red-400" />
-                        <span className="relative flex h-3.5 w-3.5 items-center justify-center rounded-full bg-white text-red-600 ring-1 ring-red-300">
+                        <span className="nav-low-ring absolute inset-0 rounded-full bg-red-400/70" />
+                        <span className="nav-low-breathe relative flex h-3.5 w-3.5 items-center justify-center rounded-full bg-white text-red-600 ring-1 ring-red-300">
                           <FaExclamationTriangle className="text-[7px]" />
                         </span>
                       </span>
                     )}
-                    <FaWallet className="text-[13px]" />
+                    <FaWallet className={`text-[13px] ${lowBalance ? "nav-low-sway" : ""}`} />
                     <span
                       className={`text-[9px] font-extrabold leading-none ${
-                        lowBalance || isActive ? "text-white" : "text-violet-100"
+                        lowBalance ? "nav-low-breathe text-red-400" : isActive ? "text-white" : "text-violet-100"
                       }`}
                     >
                       {profile ? formatINR(balance) : "…"}
@@ -403,24 +399,23 @@ export default function Navbar() {
                       key={l.to}
                       to={l.to}
                       end={l.end}
-                      className={(s) =>
-                        `${navLinkClass(s)} w-full py-3 ${
-                          isWallet && lowBalance ? "bg-red-500/15 ring-1 ring-red-400/50" : ""
-                        }`
-                      }
+                      className={(s) => `${navLinkClass(s)} w-full py-3`}
                     >
                       {isWallet && lowBalance ? (
-                        <FaExclamationTriangle className="nav-low-blink text-xs text-red-300" />
+                        <span className="relative flex h-4 w-4 items-center justify-center">
+                          <span className="nav-low-ring absolute inset-0 rounded-full bg-red-500/60" />
+                          <FaExclamationTriangle className="nav-low-breathe relative text-xs text-red-400" />
+                        </span>
                       ) : (
                         <l.icon className="text-xs text-violet-300" />
                       )}
                       {l.label}
                       {isWallet && profile && (
                         <span
-                          className={`ml-auto rounded-full px-2.5 py-0.5 text-xs font-bold ${
+                          className={`ml-auto rounded-full px-2.5 py-0.5 text-xs font-bold ring-1 ${
                             lowBalance
-                              ? "bg-red-500 text-white ring-1 ring-red-300/60"
-                              : "bg-violet-400/20 text-violet-100 ring-1 ring-violet-300/40"
+                              ? "nav-low-breathe bg-violet-400/20 text-red-400 ring-violet-300/40"
+                              : "bg-violet-400/20 text-violet-100 ring-violet-300/40"
                           }`}
                         >
                           {formatINR(balance)}
