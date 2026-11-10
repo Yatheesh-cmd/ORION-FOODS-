@@ -21,20 +21,25 @@ export const AuthProvider = ({ children }) => {
 
     let cancelled = false;
     (async () => {
+      let externalId = null;
+
       try {
-        console.log("[OneSignal] AuthContext: fetching /push/me ...");
         const { data } = await API.get("/push/me");
-        console.log("[OneSignal] externalId from backend:", data?.externalId);
-        if (!cancelled && data?.externalId) {
-          await enableOneSignalForUser(data.externalId);
-        }
+        externalId = data?.externalId || null;
       } catch (err) {
-        // push is optional: never block the app, but show why it failed
+        // /push/me not available (for example not deployed yet): fall back to the logged-in user's id
         console.warn(
           "[OneSignal] /push/me failed:",
           err?.response?.status,
           err?.response?.data?.message || err?.message
         );
+      }
+
+      if (!externalId) externalId = user?._id || user?.id || null;
+
+      console.log("[OneSignal] externalId used:", externalId);
+      if (!cancelled && externalId) {
+        await enableOneSignalForUser(externalId);
       }
     })();
 
