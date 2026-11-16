@@ -21,6 +21,9 @@ import {
   FaChevronLeft,
   FaChevronRight,
   FaChevronDown,
+  FaPlay,
+  FaPause,
+  FaCheck,
 } from "react-icons/fa";
 import { GiHotMeal } from "react-icons/gi";
 import { MdOutlineFastfood, MdPayment } from "react-icons/md";
@@ -30,6 +33,20 @@ import { PRICE, FULL_DAY_PRICE, TWO_MEAL_PRICE, normalCost, autoDayCost, formatI
 
 const CHEF_LOGO =
   "https://png.pngtree.com/png-clipart/20240202/original/pngtree-chef-logo-for-culinary-png-image_14215663.png";
+
+/* ------------------------------------------------------------------ */
+/*  Real food photos for the meal cards (optional)                     */
+/*  1. Put your photos in src/assets and export them from assets/index */
+/*  2. import { breakfastImg, lunchImg, dinnerImg } from "../assets/index";
+/*  3. Replace the empty strings below with those imports.             */
+/*  Left empty, the cards simply keep showing the emoji.               */
+/* ------------------------------------------------------------------ */
+
+const MEAL_PHOTOS = {
+  breakfast: "",
+  lunch: "",
+  dinner: "",
+};
 
 /* ------------------------------------------------------------------ */
 /*  Auth-aware links                                                   */
@@ -121,6 +138,42 @@ function Reveal({ children, delay = 0, y = 36, x = 0, scale = 1, className = "" 
       {children}
     </div>
   );
+}
+
+/**
+ * Returns [ref, seen]. `seen` turns true once the element is on screen OR already scrolled past,
+ * so fast scrolling can never leave a section hidden.
+ */
+function useSeen(rootMargin = "0px 0px -6% 0px") {
+  const ref = useRef(null);
+  const [seen, setSeen] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+
+    if (prefersReducedMotion() || typeof IntersectionObserver === "undefined") {
+      setSeen(true);
+      return undefined;
+    }
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting || e.boundingClientRect.top < 0) {
+            setSeen(true);
+            io.disconnect();
+          }
+        });
+      },
+      { rootMargin, threshold: 0.08 }
+    );
+    io.observe(el);
+
+    return () => io.disconnect();
+  }, [rootMargin]);
+
+  return [ref, seen];
 }
 
 /** Thin progress bar at the top of the page (GPU friendly: only transform changes). */
@@ -266,6 +319,7 @@ const SAMPLE_MEALS = [
     time: "7:30 AM",
     price: PRICE.breakfast,
     emoji: "☕",
+    photo: MEAL_PHOTOS.breakfast,
     tile: "from-amber-100 to-orange-200",
   },
   {
@@ -274,6 +328,7 @@ const SAMPLE_MEALS = [
     time: "1:00 PM",
     price: PRICE.lunch,
     emoji: "🍛",
+    photo: MEAL_PHOTOS.lunch,
     tile: "from-orange-100 to-rose-200",
   },
   {
@@ -282,6 +337,7 @@ const SAMPLE_MEALS = [
     time: "8:00 PM",
     price: PRICE.dinner,
     emoji: "🍲",
+    photo: MEAL_PHOTOS.dinner,
     tile: "from-blue-100 to-indigo-200",
   },
 ];
@@ -317,7 +373,7 @@ function SampleOrderCard() {
       <div className="relative z-10 overflow-hidden rounded-3xl bg-white shadow-2xl shadow-black/30 ring-1 ring-white/40">
         <div className="h-1.5 w-full bg-gradient-to-r from-blue-600 via-blue-400 to-orange-500" />
 
-        <div className="p-5 sm:p-6">
+        <div className="p-4 sm:p-6">
           <div className="mb-5 flex items-start justify-between">
             <div>
               <div className="flex items-center gap-2">
@@ -338,100 +394,741 @@ function SampleOrderCard() {
           </div>
 
           <ul className="space-y-3">
-            {SAMPLE_MEALS.map(({ key, label, time, price, emoji, tile }) => {
+            {SAMPLE_MEALS.map(({ key, label, time, price, emoji, photo, tile }) => {
               const active = counts[key] > 0;
               return (
                 <li
                   key={key}
-                  className={`group flex items-center justify-between rounded-2xl border p-3 transition-all duration-200 ${
+                  className={`group flex items-center justify-between gap-3 rounded-2xl border p-3 transition-all duration-300 ease-out ${
                     active
-                      ? "border-orange-200 bg-orange-50/50 shadow-sm"
+                      ? "border-orange-200 bg-orange-50/50 shadow-sm hover:-translate-y-0.5 hover:shadow-md"
                       : "border-slate-100 bg-slate-50 opacity-70"
                   }`}
                 >
-                  <div className="flex items-center gap-3">
+                  <div className="flex min-w-0 flex-1 items-center gap-3">
                     <span
-                      className={`flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br text-2xl shadow-inner transition-transform duration-200 group-hover:scale-110 ${tile}`}
+                      className={`flex h-12 w-12 flex-none items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br text-2xl shadow-inner transition-transform duration-300 group-hover:scale-110 ${tile}`}
                     >
-                      <span aria-hidden="true">{emoji}</span>
+                      {photo ? (
+                        <img
+                          src={photo}
+                          alt={label}
+                          className="h-full w-full object-cover"
+                          loading="lazy"
+                          decoding="async"
+                        />
+                      ) : (
+                        <span aria-hidden="true">{emoji}</span>
+                      )}
                     </span>
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">{label}</p>
-                      <p className="text-xs text-slate-500">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-slate-900">{label}</p>
+                      <p className="truncate text-xs tabular-nums text-slate-500">
                         {time} · ₹{price} each
                       </p>
                     </div>
                   </div>
 
-                  <div className="flex flex-col items-end gap-1.5">
+                  <div className="flex w-[104px] flex-none flex-col items-end gap-1.5">
                     <div className="flex items-center gap-1 rounded-xl bg-white p-1 shadow-sm ring-1 ring-slate-200">
                       <button
                         type="button"
                         aria-label={`Remove one ${label}`}
                         onClick={() => change(key, -1)}
-                        className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-blue-700"
+                        className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 transition duration-200 hover:bg-slate-100 hover:text-blue-700 active:scale-90"
                       >
                         <FaMinus className="text-[10px]" />
                       </button>
-                      <span className="w-5 text-center text-sm font-bold text-slate-900">{counts[key]}</span>
+                      <span
+                        key={counts[key]}
+                        className="home-bump w-6 text-center text-sm font-bold tabular-nums text-slate-900"
+                      >
+                        {counts[key]}
+                      </span>
                       <button
                         type="button"
                         aria-label={`Add one ${label}`}
                         onClick={() => change(key, 1)}
-                        className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-700 text-white transition hover:bg-blue-800"
+                        className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-700 text-white transition duration-200 hover:bg-blue-800 active:scale-90"
                       >
                         <FaPlus className="text-[10px]" />
                       </button>
                     </div>
-                    <span className="text-[11px] font-semibold text-slate-500">₹{price * counts[key]}</span>
+                    <span className="text-[11px] font-semibold tabular-nums text-slate-500">
+                      ₹{price * counts[key]}
+                    </span>
                   </div>
                 </li>
               );
             })}
           </ul>
 
-          <div className="mt-5 overflow-hidden rounded-2xl bg-[#0b1b3f] text-white">
-            <div className="flex items-center justify-between gap-3 px-5 py-4">
-              <div>
-                <p className="text-xs text-blue-200/70">
+          {/* premium total card */}
+          <div className="relative mt-5 overflow-hidden rounded-2xl bg-gradient-to-br from-[#0b1b3f] via-[#122a5c] to-[#0b1b3f] text-white shadow-lg shadow-blue-900/30 ring-1 ring-white/10">
+            <span className="pointer-events-none absolute -right-8 -top-10 h-28 w-28 rounded-full bg-orange-400/25 blur-2xl" />
+            <span
+              className="pointer-events-none absolute inset-y-0 left-0 w-1/3 bg-gradient-to-r from-transparent via-white/10 to-transparent"
+              style={{ animation: "homeShine 5s ease-in-out 1.5s infinite" }}
+            />
+
+            <div className="relative flex items-center justify-between gap-3 px-4 py-4 sm:px-5">
+              <div className="min-w-0">
+                <p className="text-xs tabular-nums text-blue-200/70">
                   {items} {items === 1 ? "meal" : "meals"} today
                 </p>
                 <p className="text-sm font-medium text-blue-100">Total amount</p>
               </div>
-              <div className="text-right">
+              <div className="flex-none text-right">
                 {offerOn && (
                   <div className="flex items-center justify-end gap-1.5">
                     <span className="flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-white">
                       <FaTimes className="text-[8px]" />
                     </span>
-                    <span className="text-base font-semibold text-blue-200/70 line-through decoration-red-400 decoration-2">
+                    <span className="text-base font-semibold tabular-nums text-blue-200/70 line-through decoration-red-400 decoration-2">
                       {formatINR(regular)}
                     </span>
                   </div>
                 )}
-                <span className="font-display text-3xl font-extrabold">{formatINR(payable)}</span>
+                <span
+                  key={payable}
+                  className="home-bump inline-block font-display text-3xl font-extrabold tabular-nums"
+                >
+                  {formatINR(payable)}
+                </span>
               </div>
             </div>
 
             {offerOn && (
-              <div className="flex items-center justify-between gap-2 bg-green-500 px-5 py-2.5 text-sm font-bold text-white">
-                <span className="flex items-center gap-2">
-                  <FaTag className="text-xs" />
-                  {picked.length === 3 ? "Full day combo offer" : "Two meal combo offer"}
+              <div className="relative flex items-center justify-between gap-2 bg-gradient-to-r from-green-500 to-emerald-500 px-4 py-2.5 text-sm font-bold text-white sm:px-5">
+                <span className="flex min-w-0 items-center gap-2">
+                  <FaTag className="flex-none text-xs" />
+                  <span className="truncate">
+                    {picked.length === 3 ? "Full day combo offer" : "Two meal combo offer"}
+                  </span>
                 </span>
-                <span className="rounded-full bg-white/20 px-3 py-0.5">Saved {formatINR(saved)}</span>
+                <span className="flex-none rounded-full bg-white/20 px-3 py-0.5 tabular-nums">
+                  Saved {formatINR(saved)}
+                </span>
               </div>
             )}
           </div>
 
-          <p className="mt-3 text-center text-[11px] font-semibold text-orange-600">
-            {comboPossible && !offerOn
-              ? "Combo offer applies when you pick 1 of each meal per day"
-              : `10-day Auto Order offer: full day ${formatINR(FULL_DAY_PRICE)} · any two meals ${formatINR(TWO_MEAL_PRICE)}`}
-          </p>
+          {/* 10-day auto order offer */}
+          <div className="mt-3 rounded-2xl border border-orange-200 bg-gradient-to-r from-orange-50 to-amber-50 p-3">
+            <div className="flex items-center gap-2 text-[11px] font-extrabold uppercase tracking-wide text-orange-700">
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-orange-500 text-[10px] text-white">
+                <FaBolt />
+              </span>
+              10-day Auto Order offer
+            </div>
+            <div className="mt-2.5 grid grid-cols-2 gap-2">
+              <div className="rounded-xl bg-white px-3 py-2 text-center ring-1 ring-orange-100">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Full day</p>
+                <p className="text-base font-extrabold tabular-nums text-slate-900">{formatINR(FULL_DAY_PRICE)}</p>
+              </div>
+              <div className="rounded-xl bg-white px-3 py-2 text-center ring-1 ring-orange-100">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Any two meals</p>
+                <p className="text-base font-extrabold tabular-nums text-slate-900">{formatINR(TWO_MEAL_PRICE)}</p>
+              </div>
+            </div>
+            {comboPossible && !offerOn && (
+              <p className="mt-2 text-center text-[11px] font-semibold text-orange-700">
+                Combo offer applies when you pick 1 of each meal per day
+              </p>
+            )}
+          </div>
         </div>
       </div>
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  How it works (step by step for customers)                          */
+/* ------------------------------------------------------------------ */
+
+/* ---------- illustrated step icons (multi-colour SVG, animate when the step is active) ---------- */
+
+/** Step 1: phone with a sign-up form. Fields fill in one by one, then the tick pops. */
+function AccountArt() {
+  return (
+    <svg viewBox="0 0 96 96" className="h-full w-full" aria-hidden="true">
+      <defs>
+        <linearGradient id="hwAcBody" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#334155" />
+          <stop offset="1" stopColor="#0f172a" />
+        </linearGradient>
+        <linearGradient id="hwAcScreen" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#e0f2fe" />
+          <stop offset="1" stopColor="#ffffff" />
+        </linearGradient>
+        <linearGradient id="hwAcAvatar" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#38bdf8" />
+          <stop offset="1" stopColor="#2563eb" />
+        </linearGradient>
+        <linearGradient id="hwAcOk" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#4ade80" />
+          <stop offset="1" stopColor="#16a34a" />
+        </linearGradient>
+      </defs>
+      <ellipse cx="48" cy="90" rx="22" ry="3.5" fill="#0f172a" opacity=".14" />
+      <rect x="26" y="6" width="44" height="80" rx="10" fill="url(#hwAcBody)" />
+      <rect x="29.5" y="11" width="37" height="70" rx="7" fill="url(#hwAcScreen)" />
+      <rect x="40" y="8.2" width="16" height="2.4" rx="1.2" fill="#475569" />
+      <circle cx="48" cy="26" r="6.5" fill="url(#hwAcAvatar)" />
+      <path d="M36 44c1.5-7.5 6.2-10.5 12-10.5S58.5 36.5 60 44z" fill="url(#hwAcAvatar)" />
+      <rect x="35" y="50" width="26" height="5.5" rx="2.75" fill="#e2e8f0" />
+      <rect className="hw-fill" x="35" y="50" width="26" height="5.5" rx="2.75" fill="#7dd3fc" style={{ "--d": "0s" }} />
+      <rect x="35" y="58" width="26" height="5.5" rx="2.75" fill="#e2e8f0" />
+      <rect className="hw-fill" x="35" y="58" width="26" height="5.5" rx="2.75" fill="#7dd3fc" style={{ "--d": "0.35s" }} />
+      <rect x="35" y="66" width="26" height="5.5" rx="2.75" fill="#e2e8f0" />
+      <rect className="hw-fill" x="35" y="66" width="26" height="5.5" rx="2.75" fill="#7dd3fc" style={{ "--d": "0.7s" }} />
+      <circle className="hw-pop" cx="68" cy="68" r="11" fill="url(#hwAcOk)" stroke="#ffffff" strokeWidth="3" style={{ "--d": "1.1s" }} />
+      <path
+        className="hw-pop"
+        d="M62.5 68.5l4 4 7-8"
+        fill="none"
+        stroke="#ffffff"
+        strokeWidth="3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        style={{ "--d": "1.1s" }}
+      />
+    </svg>
+  );
+}
+
+/** Step 2: map tile with a bouncing pin, ripples and a dashed 1 km radius. */
+function LocationArt() {
+  return (
+    <svg viewBox="0 0 96 96" className="h-full w-full" aria-hidden="true">
+      <defs>
+        <linearGradient id="hwLoPin" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#fb7185" />
+          <stop offset="1" stopColor="#e11d48" />
+        </linearGradient>
+        <clipPath id="hwLoClip">
+          <rect x="6" y="44" width="84" height="44" rx="10" />
+        </clipPath>
+      </defs>
+      <rect x="6" y="44" width="84" height="44" rx="10" fill="#e0f2fe" />
+      <g clipPath="url(#hwLoClip)">
+        <rect x="10" y="49" width="22" height="15" rx="4" fill="#bbf7d0" />
+        <rect x="70" y="66" width="16" height="12" rx="3" fill="#bbf7d0" />
+        <path d="M6 83c22-9 42 3 84-8v14H6z" fill="#7dd3fc" />
+        <path d="M6 64h84M34 44v44M64 44v44" stroke="#ffffff" strokeWidth="4" />
+        <path d="M6 64h84M34 44v44M64 44v44" stroke="#cbd5e1" strokeWidth=".6" strokeDasharray="2 3" />
+      </g>
+      <rect x="6" y="44" width="84" height="44" rx="10" fill="none" stroke="#bae6fd" strokeWidth="1.2" />
+      <ellipse cx="48" cy="72" rx="28" ry="9.5" fill="#fb7185" opacity=".14" stroke="#fb7185" strokeWidth="1.4" strokeDasharray="3 3" />
+      <ellipse className="hw-ripple" cx="48" cy="72" rx="16" ry="5.5" fill="none" stroke="#e11d48" strokeWidth="1.6" style={{ "--d": "0s" }} />
+      <ellipse className="hw-ripple" cx="48" cy="72" rx="16" ry="5.5" fill="none" stroke="#e11d48" strokeWidth="1.6" style={{ "--d": "0.9s" }} />
+      <ellipse cx="48" cy="71" rx="5" ry="1.8" fill="#881337" opacity=".35" />
+      <g className="hw-bounce">
+        <path
+          d="M48 8c-11.5 0-20.5 8.8-20.5 20 0 14.5 20.5 38 20.5 38s20.5-23.5 20.5-38c0-11.2-9-20-20.5-20z"
+          fill="url(#hwLoPin)"
+        />
+        <path d="M48 8c-11.5 0-20.5 8.8-20.5 20 0 3 .9 6.200 2.400 9.400C32.500 21 40 14 48 14c8 0 15.500 7 18.100 23.400 1.500-3.200 2.400-6.400 2.400-9.400C68.500 16.800 59.500 8 48 8z" fill="#ffffff" opacity=".22" />
+        <circle cx="48" cy="28" r="8.5" fill="#ffffff" />
+        <circle cx="48" cy="28" r="4" fill="#e11d48" />
+      </g>
+    </svg>
+  );
+}
+
+/** Step 3: wallet with a peeking card and a spinning rupee coin. */
+function WalletArt() {
+  return (
+    <svg viewBox="0 0 96 96" className="h-full w-full" aria-hidden="true">
+      <defs>
+        <linearGradient id="hwWaBody" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#10b981" />
+          <stop offset="1" stopColor="#047857" />
+        </linearGradient>
+        <linearGradient id="hwWaCard" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#fde68a" />
+          <stop offset="1" stopColor="#f59e0b" />
+        </linearGradient>
+        <linearGradient id="hwWaCoin" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#fde047" />
+          <stop offset="1" stopColor="#d97706" />
+        </linearGradient>
+      </defs>
+      <ellipse cx="46" cy="89" rx="32" ry="3.5" fill="#0f172a" opacity=".14" />
+      <g transform="rotate(-9 44 38)">
+        <rect x="18" y="20" width="50" height="32" rx="5" fill="url(#hwWaCard)" />
+        <rect x="18" y="27" width="50" height="6" fill="#b45309" opacity=".35" />
+        <rect x="24" y="39" width="14" height="4" rx="2" fill="#ffffff" opacity=".75" />
+      </g>
+      <rect x="8" y="34" width="74" height="50" rx="11" fill="url(#hwWaBody)" />
+      <path d="M8 46v-1c0-6 5-11 11-11h52c6 0 11 5 11 11v1z" fill="#6ee7b7" opacity=".5" />
+      <rect x="13" y="40" width="64" height="39" rx="7" fill="none" stroke="#ffffff" strokeOpacity=".3" strokeWidth="1.2" strokeDasharray="3 3" />
+      <rect x="60" y="52" width="28" height="19" rx="9.5" fill="#065f46" />
+      <circle cx="72" cy="61.5" r="4.5" fill="url(#hwWaCoin)" stroke="#ffffff" strokeWidth="1.5" />
+      <g className="hw-coin">
+        <circle cx="76" cy="19" r="11" fill="url(#hwWaCoin)" stroke="#b45309" strokeWidth="1.5" />
+        <circle cx="76" cy="19" r="7.5" fill="none" stroke="#ffffff" strokeOpacity=".55" strokeWidth="1.2" />
+        <text x="76" y="23.5" textAnchor="middle" fontSize="12" fontWeight="800" fill="#92400e">
+          ₹
+        </text>
+      </g>
+    </svg>
+  );
+}
+
+/** Step 4: a hot meal on a plate, steam rising. */
+function MealArt() {
+  return (
+    <svg viewBox="0 0 96 96" className="h-full w-full" aria-hidden="true">
+      <defs>
+        <linearGradient id="hwMePlate" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#ffffff" />
+          <stop offset="1" stopColor="#cbd5e1" />
+        </linearGradient>
+        <linearGradient id="hwMeRice" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#ffffff" />
+          <stop offset="1" stopColor="#e2e8f0" />
+        </linearGradient>
+        <linearGradient id="hwMeCurry" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#fb923c" />
+          <stop offset="1" stopColor="#c2410c" />
+        </linearGradient>
+      </defs>
+      <ellipse cx="48" cy="89" rx="36" ry="4" fill="#0f172a" opacity=".14" />
+      <ellipse cx="48" cy="77" rx="38" ry="11.5" fill="url(#hwMePlate)" />
+      <ellipse cx="48" cy="75" rx="29" ry="8" fill="#f8fafc" stroke="#e2e8f0" strokeWidth="1" />
+      <path d="M24 75c1.500-17 13-25 24-25s22.500 8 24 25c-8 5.500-40 5.500-48 0z" fill="url(#hwMeRice)" stroke="#e2e8f0" strokeWidth="1" />
+      <circle cx="40" cy="65" r="1.100" fill="#cbd5e1" />
+      <circle cx="48" cy="59" r="1.100" fill="#cbd5e1" />
+      <circle cx="55" cy="66" r="1.100" fill="#cbd5e1" />
+      <circle cx="46" cy="70" r="1.100" fill="#cbd5e1" />
+      <circle cx="34" cy="72" r="1.100" fill="#cbd5e1" />
+      <ellipse cx="64" cy="73" rx="10" ry="5" fill="url(#hwMeCurry)" />
+      <ellipse cx="61" cy="71.500" rx="4" ry="1.500" fill="#fdba74" opacity=".8" />
+      <ellipse cx="31" cy="74" rx="8" ry="4" fill="#22c55e" />
+      <circle cx="28" cy="73" r="1.300" fill="#15803d" />
+      <circle cx="33" cy="75" r="1.300" fill="#15803d" />
+      <circle cx="35" cy="72.500" r="1.300" fill="#86efac" />
+      <path className="hw-steam" d="M40 45c-4-5 4-8 0-14" fill="none" stroke="#94a3b8" strokeWidth="2.4" strokeLinecap="round" style={{ "--d": "0s" }} />
+      <path className="hw-steam" d="M48 41c-4-6 4-9 0-16" fill="none" stroke="#94a3b8" strokeWidth="2.4" strokeLinecap="round" style={{ "--d": "0.6s" }} />
+      <path className="hw-steam" d="M56 45c-4-5 4-8 0-14" fill="none" stroke="#94a3b8" strokeWidth="2.4" strokeLinecap="round" style={{ "--d": "1.2s" }} />
+    </svg>
+  );
+}
+
+/** Step 5: delivery scooter with a food box. Wheels spin, speed lines fly past. */
+function DeliveryArt() {
+  return (
+    <svg viewBox="0 0 96 96" className="h-full w-full" aria-hidden="true">
+      <defs>
+        <linearGradient id="hwDeBox" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#fb923c" />
+          <stop offset="1" stopColor="#ea580c" />
+        </linearGradient>
+        <linearGradient id="hwDeBody" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#a78bfa" />
+          <stop offset="1" stopColor="#7c3aed" />
+        </linearGradient>
+      </defs>
+      <rect x="4" y="81" width="88" height="3" rx="1.5" fill="#cbd5e1" />
+      <path className="hw-speed" d="M6 46h12" stroke="#c4b5fd" strokeWidth="2.4" strokeLinecap="round" fill="none" style={{ "--d": "0s" }} />
+      <path className="hw-speed" d="M3 54h15" stroke="#c4b5fd" strokeWidth="2.4" strokeLinecap="round" fill="none" style={{ "--d": "0.3s" }} />
+      <path className="hw-speed" d="M7 62h11" stroke="#c4b5fd" strokeWidth="2.4" strokeLinecap="round" fill="none" style={{ "--d": "0.6s" }} />
+      <g className="hw-ride">
+        <circle cx="28" cy="72" r="9" fill="#1e293b" />
+        <circle cx="28" cy="72" r="4.5" fill="#cbd5e1" />
+        <g className="hw-spin" style={{ transformOrigin: "28px 72px" }}>
+          <path d="M28 67.500v9M23.500 72h9" stroke="#64748b" strokeWidth="1.600" />
+        </g>
+        <circle cx="72" cy="72" r="9" fill="#1e293b" />
+        <circle cx="72" cy="72" r="4.5" fill="#cbd5e1" />
+        <g className="hw-spin" style={{ transformOrigin: "72px 72px" }}>
+          <path d="M72 67.500v9M67.500 72h9" stroke="#64748b" strokeWidth="1.600" />
+        </g>
+        <path d="M30 59h28c4 0 7 2 9 6l1 3H30z" fill="url(#hwDeBody)" />
+        <rect x="31" y="53.500" width="20" height="5.500" rx="2.750" fill="#1e293b" />
+        <path d="M66 65l4-27" stroke="#6d28d9" strokeWidth="4.500" strokeLinecap="round" />
+        <path d="M64 38h10" stroke="#1e293b" strokeWidth="4" strokeLinecap="round" />
+        <circle cx="75.500" cy="41" r="3.200" fill="#fde047" />
+        <path d="M10 57h28" stroke="#475569" strokeWidth="3" strokeLinecap="round" />
+        <rect x="8" y="33" width="28" height="22" rx="4" fill="url(#hwDeBox)" />
+        <rect x="8" y="41" width="28" height="3.500" fill="#ffffff" opacity=".45" />
+        <circle cx="22" cy="49.500" r="2.500" fill="#ffffff" opacity=".85" />
+        <path d="M46 53l-1-15 10 3 3 12z" fill="#1e293b" />
+        <path d="M47 54l8 10" stroke="#1e293b" strokeWidth="4.500" strokeLinecap="round" />
+        <path d="M53 41l11-3" stroke="#334155" strokeWidth="4" strokeLinecap="round" />
+        <circle cx="50" cy="30" r="6.500" fill="#fbbf24" />
+        <path d="M43.500 30a6.500 6.500 0 0 1 13 0z" fill="#ef4444" />
+      </g>
+    </svg>
+  );
+}
+
+const HOW_STEPS = [
+  {
+    id: "account",
+    Art: AccountArt,
+    title: "Create your account",
+    text: "Sign up with your name, phone number and address. It takes about one minute.",
+    soft: "from-sky-100 via-sky-50 to-blue-100",
+  },
+  {
+    id: "location",
+    Art: LocationArt,
+    title: "Set your delivery location",
+    text: "Pin your home on the map. We deliver within 1 km of Golden Kitchen, Kakkanad.",
+    soft: "from-rose-100 via-rose-50 to-pink-100",
+  },
+  {
+    id: "wallet",
+    Art: WalletArt,
+    title: "Add money to your wallet",
+    text: "Pay with UPI or GPay. Your balance is shown at the top and is used for every order.",
+    soft: "from-emerald-100 via-emerald-50 to-teal-100",
+  },
+  {
+    id: "meals",
+    Art: MealArt,
+    title: "Choose your meals",
+    text: "Pick breakfast, lunch and dinner for a day, or start a 10-day Auto Order. One order per day.",
+    soft: "from-orange-100 via-amber-50 to-orange-100",
+  },
+  {
+    id: "track",
+    Art: DeliveryArt,
+    title: "Track and enjoy",
+    text: "Follow your order from Placed to Delivered. Fresh, homely food reaches your door.",
+    soft: "from-violet-100 via-fuchsia-50 to-violet-100",
+  },
+];
+
+const CUTOFFS = [
+  { emoji: "☕", label: "Breakfast", time: "7 PM" },
+  { emoji: "🍛", label: "Lunch", time: "7 PM" },
+  { emoji: "🌙", label: "Dinner", time: "9 PM" },
+];
+
+/** Small live preview at the bottom of each step card. Replays when the step becomes active. */
+function StepDemo({ id, active }) {
+  if (id === "account") {
+    return (
+      <div className="flex flex-wrap items-center gap-1.5">
+        {["Name", "Phone", "Address"].map((t, k) => (
+          <span
+            key={t}
+            className="hw-pop inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 text-[11px] font-bold text-sky-700 ring-1 ring-sky-200"
+            style={{ "--d": `${k * 0.35}s` }}
+          >
+            <FaCheckCircle className="text-emerald-500" />
+            {t}
+          </span>
+        ))}
+      </div>
+    );
+  }
+
+  if (id === "location") {
+    return (
+      <div className="flex items-center gap-2">
+        <span className="relative flex h-2.5 w-2.5 flex-none">
+          <span
+            className={`absolute inline-flex h-full w-full rounded-full bg-rose-500 opacity-75 ${
+              active ? "animate-ping" : ""
+            }`}
+          />
+          <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-rose-500" />
+        </span>
+        <p className="text-xs font-bold text-slate-700">
+          Delivery within <span className="text-rose-600">1 km</span> of the kitchen
+        </p>
+      </div>
+    );
+  }
+
+  if (id === "wallet") {
+    return (
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <p className="text-[10px] font-semibold text-slate-500">Sample balance</p>
+          <p className="text-lg font-extrabold leading-tight tabular-nums text-emerald-600">
+            ₹<CountUp key={active ? "on" : "off"} to={1000} />
+          </p>
+        </div>
+        <div className="flex gap-1">
+          {["UPI", "GPay"].map((t) => (
+            <span key={t} className="rounded-full bg-white px-2 py-1 text-[11px] font-bold text-emerald-700 ring-1 ring-emerald-200">
+              {t}
+            </span>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (id === "meals") {
+    return (
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex gap-1.5">
+          {["☕", "🍛", "🌙"].map((e, k) => (
+            <span
+              key={e}
+              className="hw-pop flex h-8 w-8 items-center justify-center rounded-full bg-white text-base ring-1 ring-orange-200"
+              style={{ "--d": `${k * 0.3}s` }}
+            >
+              {e}
+            </span>
+          ))}
+        </div>
+        <div className="text-right">
+          <p className="text-[10px] font-semibold text-slate-500">Auto Order full day</p>
+          <p className="text-sm font-extrabold leading-tight text-orange-600">{formatINR(FULL_DAY_PRICE)}</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="h-2 overflow-hidden rounded-full bg-slate-200">
+        <div
+          className="hw-barfill h-full w-full rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500"
+          style={{ transformOrigin: "left center" }}
+        />
+      </div>
+      <div className="mt-1.5 flex justify-between text-[10px] font-bold text-slate-500">
+        <span>Placed</span>
+        <span>Preparing</span>
+        <span>Delivered</span>
+      </div>
+    </div>
+  );
+}
+
+function HowItWorks({ startTo, authed }) {
+  const [ref, seen] = useSeen();
+  const [active, setActive] = useState(0);
+  const [auto, setAuto] = useState(true);
+  const [paused, setPaused] = useState(false);
+  const resume = useRef(null);
+  const last = HOW_STEPS.length - 1;
+  const reduced = prefersReducedMotion();
+
+  // walk through the steps one by one so the customer sees the whole flow
+  useEffect(() => {
+    if (!seen || !auto || paused || prefersReducedMotion()) return undefined;
+    const t = setInterval(() => setActive((i) => (i + 1) % HOW_STEPS.length), 3600);
+    return () => clearInterval(t);
+  }, [seen, auto, paused]);
+
+  useEffect(() => () => clearTimeout(resume.current), []);
+
+  // tap / click / focus a step: show it and pause the auto walk for a few seconds
+  const pick = (i) => {
+    setActive(i);
+    setPaused(true);
+    clearTimeout(resume.current);
+    resume.current = setTimeout(() => setPaused(false), 7000);
+  };
+
+  return (
+    <section
+      id="how-it-works"
+      ref={ref}
+      className="relative scroll-mt-16 overflow-hidden border-y border-slate-200 bg-gradient-to-b from-white via-slate-50 to-white py-16 sm:py-24"
+    >
+      <div
+        className="pointer-events-none absolute inset-0 opacity-50"
+        style={{ backgroundImage: "radial-gradient(circle, #cbd5e1 1px, transparent 1px)", backgroundSize: "24px 24px" }}
+      />
+      <div className="home-drift-a pointer-events-none absolute -left-24 top-10 hidden h-80 w-80 rounded-full bg-orange-200/50 blur-3xl sm:block" />
+      <div className="home-drift-b pointer-events-none absolute -right-24 bottom-10 hidden h-80 w-80 rounded-full bg-sky-200/50 blur-3xl sm:block" />
+
+      <div className="relative mx-auto max-w-7xl px-4 sm:px-5">
+        <Reveal className="mx-auto max-w-2xl text-center">
+          <h2 className="text-3xl font-extrabold leading-tight text-slate-900 sm:text-4xl lg:text-5xl">
+            Order in 5 simple steps
+          </h2>
+          <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-slate-600 sm:text-lg">
+            Do steps 1 to 3 once. After that, ordering your daily meals takes only a few taps.
+          </p>
+          <button
+            type="button"
+            onClick={() => setAuto((a) => !a)}
+            aria-pressed={auto}
+            className="mt-6 inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-xs font-bold text-slate-700 shadow-md ring-1 ring-slate-200 transition hover:shadow-lg active:scale-95"
+          >
+            <span
+              className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] text-white ${
+                auto ? "bg-orange-500" : "bg-slate-400"
+              }`}
+            >
+              {auto ? <FaPause /> : <FaPlay />}
+            </span>
+            Animation: {auto ? "On" : "Off"}
+          </button>
+        </Reveal>
+
+        <div className="mt-10 sm:mt-12">
+          {/* progress stepper */}
+          <div className="relative mb-6 sm:mb-8">
+            <span className="pointer-events-none absolute left-[10%] right-[10%] top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-slate-200 lg:left-[calc(10%-0.5rem)] lg:right-[calc(10%-0.5rem)]">
+              <span
+                className="relative block h-full rounded-full bg-gradient-to-r from-orange-500 to-amber-400 transition-[width] duration-700 ease-out"
+                style={{ width: `${seen ? (active / last) * 100 : 0}%` }}
+              >
+                <span className="absolute -right-1.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 rounded-full bg-white shadow-[0_0_14px_rgba(249,115,22,.9)] ring-4 ring-orange-400" />
+              </span>
+            </span>
+            <div className="relative z-10 grid grid-cols-5 lg:gap-5">
+              {HOW_STEPS.map((s, i) => (
+                <div key={s.id} className="flex justify-center">
+                  <button
+                    type="button"
+                    onClick={() => pick(i)}
+                    aria-label={`Step ${i + 1}: ${s.title}`}
+                    aria-current={i === active ? "step" : undefined}
+                    className={`relative flex h-10 w-10 items-center justify-center rounded-full text-sm font-extrabold transition-all duration-500 sm:h-12 sm:w-12 sm:text-base ${
+                      i < active
+                        ? "bg-gradient-to-br from-orange-500 to-amber-400 text-white shadow-lg shadow-orange-500/30"
+                        : i === active
+                        ? "scale-110 bg-white text-orange-600 shadow-xl shadow-orange-500/30 ring-4 ring-orange-400"
+                        : "bg-white text-slate-400 ring-2 ring-slate-200"
+                    }`}
+                  >
+                    {i < active ? <FaCheck /> : i + 1}
+                    {i === active && !reduced && (
+                      <span aria-hidden="true" className="absolute inset-0 animate-ping rounded-full ring-4 ring-orange-300/60" />
+                    )}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* step cards */}
+          <ol className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5 lg:gap-5">
+            {HOW_STEPS.map((s, i) => {
+              const Art = s.Art;
+              const isActive = active === i;
+              return (
+                <li
+                  key={s.id}
+                  tabIndex={0}
+                  onClick={() => pick(i)}
+                  onFocus={() => pick(i)}
+                  className={`cursor-pointer outline-none ${isActive ? "hw-on" : ""} ${
+                    i === last ? "sm:col-span-2 lg:col-span-1" : ""
+                  }`}
+                  style={{
+                    opacity: seen ? 1 : 0,
+                    transform: seen ? "none" : "translate3d(0, 28px, 0) scale(.96)",
+                    transition: `opacity .6s ease ${i * 140}ms, transform .6s cubic-bezier(.2,.7,.2,1) ${i * 140}ms`,
+                  }}
+                >
+                  <div
+                    className={`h-full rounded-3xl p-[2px] transition-all duration-500 ${
+                      isActive
+                        ? "bg-gradient-to-br from-orange-400 via-amber-300 to-orange-500 shadow-2xl shadow-orange-500/25 lg:-translate-y-2"
+                        : "bg-slate-200/80 hover:-translate-y-1 hover:shadow-lg"
+                    }`}
+                  >
+                    <div className="flex h-full flex-col rounded-[22px] bg-white p-4">
+                      <div className={`relative flex h-36 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br ${s.soft}`}>
+                        <span className="absolute -right-6 -top-6 h-24 w-24 rounded-full bg-white/60" />
+                        <span className="absolute -bottom-8 -left-8 h-24 w-24 rounded-full bg-white/50" />
+                        <span className="absolute left-3 top-3 inline-flex items-center rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-extrabold text-slate-700 shadow-sm">
+                          Step {i + 1}
+                        </span>
+                        <div
+                          className={`hw-art relative h-24 w-24 transition-transform duration-500 ${
+                            isActive ? "scale-110" : "scale-100"
+                          }`}
+                        >
+                          <Art />
+                        </div>
+                      </div>
+
+                      <h3 className="mt-4 text-lg font-extrabold leading-snug text-slate-900">{s.title}</h3>
+                      <p className="mt-1.5 text-sm leading-relaxed text-slate-600">{s.text}</p>
+
+                      <div className="mt-auto pt-4">
+                        <div className="flex min-h-[3.25rem] flex-col justify-center rounded-2xl bg-slate-50 px-3 py-2.5 ring-1 ring-slate-200">
+                          <StepDemo id={s.id} active={isActive} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        </div>
+
+        {/* good to know */}
+        <Reveal delay={100} className="mx-auto mt-12 grid max-w-4xl gap-4 sm:grid-cols-2">
+          <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-[#0b1b3f] to-slate-900 p-5 text-white shadow-xl ring-1 ring-white/10">
+            <span className="pointer-events-none absolute -right-10 -top-12 h-36 w-36 rounded-full bg-orange-500/30 blur-3xl" />
+            <div className="relative flex items-center gap-3">
+              <span className="flex h-12 w-12 flex-none items-center justify-center rounded-2xl bg-orange-500 text-xl text-white shadow-lg shadow-orange-500/30">
+                <FaClock />
+              </span>
+              <div>
+                <p className="text-base font-extrabold">Order time limit</p>
+                <p className="text-xs leading-relaxed text-slate-300">Order or change before this time, the day before.</p>
+              </div>
+            </div>
+            <div className="relative mt-4 grid grid-cols-3 gap-2">
+              {CUTOFFS.map((c) => (
+                <div key={c.label} className="rounded-2xl bg-white/10 px-2 py-3 text-center ring-1 ring-white/15">
+                  <p className="text-xl leading-none" aria-hidden="true">
+                    {c.emoji}
+                  </p>
+                  <p className="mt-1.5 text-[11px] font-semibold text-slate-300">{c.label}</p>
+                  <p className="text-base font-extrabold text-orange-300">{c.time}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-orange-500 to-amber-500 p-5 text-white shadow-xl shadow-orange-500/25">
+            <span className="pointer-events-none absolute -bottom-12 -left-10 h-36 w-36 rounded-full bg-white/20 blur-2xl" />
+            <div className="relative flex items-center gap-3">
+              <span className="flex h-12 w-12 flex-none items-center justify-center rounded-2xl bg-white/20 text-xl text-white ring-1 ring-white/40">
+                <FaBolt />
+              </span>
+              <div>
+                <p className="text-base font-extrabold">10-day Auto Order</p>
+                <p className="text-xs leading-relaxed text-orange-50">Order 10 days at once and save on every day.</p>
+              </div>
+            </div>
+            <div className="relative mt-4 grid grid-cols-2 gap-2">
+              <div className="rounded-2xl bg-white px-3 py-3 text-center shadow-md">
+                <p className="text-[11px] font-semibold text-slate-500">Full day</p>
+                <p className="text-xl font-extrabold tabular-nums text-orange-600">{formatINR(FULL_DAY_PRICE)}</p>
+              </div>
+              <div className="rounded-2xl bg-white px-3 py-3 text-center shadow-md">
+                <p className="text-[11px] font-semibold text-slate-500">Any two meals</p>
+                <p className="text-xl font-extrabold tabular-nums text-orange-600">{formatINR(TWO_MEAL_PRICE)}</p>
+              </div>
+            </div>
+            <p className="relative mt-3 text-center text-[11px] font-semibold text-orange-50">
+              Take a leave on any day and it moves to the end of your plan.
+            </p>
+          </div>
+        </Reveal>
+
+        <Reveal delay={150} className="mt-10 flex justify-center">
+          <Link
+            to={startTo}
+            className="group inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 px-8 py-3.5 text-base font-bold text-white shadow-lg shadow-orange-500/30 transition duration-300 hover:-translate-y-0.5 hover:from-orange-600 hover:to-amber-600 active:scale-[.98]"
+          >
+            {authed ? "Go to dashboard" : "Create free account"}
+            <FaArrowRight className="text-xs transition group-hover:translate-x-1" />
+          </Link>
+        </Reveal>
+      </div>
+    </section>
   );
 }
 
@@ -759,7 +1456,7 @@ function MenuShowcase() {
   const go = (delta) => setActive((i) => (i + delta + WEEK_MENU.length) % WEEK_MENU.length);
 
   return (
-    <section className="relative overflow-hidden bg-brand-gradient py-16 sm:py-24">
+    <section id="weekly-menu" className="relative scroll-mt-16 overflow-hidden bg-brand-gradient py-16 sm:py-24">
       <div className="bg-grid-dark absolute inset-0" />
       <div className="absolute -left-32 top-20 hidden h-96 w-96 rounded-full bg-blue-500/25 blur-3xl sm:block" />
       <div className="absolute -bottom-32 right-0 hidden h-[28rem] w-[28rem] rounded-full bg-orange-500/25 blur-3xl sm:block" />
@@ -1011,21 +1708,6 @@ function MenuShowcase() {
 /*  Static data                                                        */
 /* ------------------------------------------------------------------ */
 
-const STEPS = [
-  {
-    title: "Create your account",
-    text: "Sign up in under a minute with your name, phone and delivery address.",
-  },
-  {
-    title: "Choose your meals",
-    text: "Set how many breakfasts, lunches and dinners you need for the day.",
-  },
-  {
-    title: "Pay and track",
-    text: "Pay by UPI or GPay, then follow the order until it reaches you.",
-  },
-];
-
 const ROLES = [
   { icon: FaUser, name: "Customer", text: "Order meals, pay, view balance" },
   { icon: FaUserTie, name: "Staff", text: "Prepare and deliver orders" },
@@ -1039,9 +1721,17 @@ const TRACK = ["Placed", "Preparing", "Delivered"];
 /* ------------------------------------------------------------------ */
 
 export default function Home() {
-  // Logged in -> "Get started free" goes to the user's dashboard, otherwise to register.
+  // Logged in -> secondary hero button goes to the user's dashboard, otherwise to register.
   const auth = getAuth();
   const startTo = auth ? dashboardFor(auth.role) : "/register";
+
+  // "Explore Our Menu" scrolls to the weekly menu section.
+  const scrollToMenu = (e) => {
+    const el = document.getElementById("weekly-menu");
+    if (!el) return;
+    e.preventDefault();
+    el.scrollIntoView({ behavior: prefersReducedMotion() ? "auto" : "smooth", block: "start" });
+  };
 
   return (
     // overflow-x: clip hides sideways overflow WITHOUT creating a scroll container
@@ -1054,11 +1744,14 @@ export default function Home() {
         @keyframes homeFade { from { opacity: 0; } to { opacity: 1; } }
         @keyframes homeZoom { from { opacity: 0; transform: scale(.94); } to { opacity: 1; transform: scale(1); } }
         @keyframes homeSlide { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes homeBump { 0% { transform: scale(.82); opacity: .4; } 60% { transform: scale(1.12); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
         @keyframes homeDrift { 0%, 100% { transform: translate3d(0,0,0) scale(1); } 50% { transform: translate3d(40px,-30px,0) scale(1.12); } }
         @keyframes homeSpin { to { transform: rotate(360deg); } }
         @keyframes homeSpinRev { to { transform: rotate(-360deg); } }
         @keyframes homeCue { 0%, 100% { transform: translateY(0); opacity: .5; } 50% { transform: translateY(7px); opacity: 1; } }
         @keyframes homeShine { 0% { transform: translateX(-120%) skewX(-20deg); } 60%, 100% { transform: translateX(260%) skewX(-20deg); } }
+
+        .home-bump { animation: homeBump .32s cubic-bezier(.2,.8,.2,1); }
 
         /* Heavy background animations: desktop only, so phones scroll smoothly */
         @media (min-width: 1024px) and (prefers-reduced-motion: no-preference) {
@@ -1079,8 +1772,36 @@ export default function Home() {
           }
         }
 
+        /* How it works: illustrated icons animate while their step is active */
+        @keyframes hwFill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+        @keyframes hwPop { 0% { transform: scale(.4); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+        @keyframes hwBounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+        @keyframes hwRipple { 0% { transform: scale(.4); opacity: .8; } 100% { transform: scale(1.7); opacity: 0; } }
+        @keyframes hwCoin { 0%, 100% { transform: scaleX(1) translateY(0); } 25% { transform: scaleX(.15) translateY(-3px); } 50% { transform: scaleX(1) translateY(-5px); } 75% { transform: scaleX(.15) translateY(-3px); } }
+        @keyframes hwSteam { 0% { transform: translateY(4px); opacity: 0; } 40% { opacity: .9; } 100% { transform: translateY(-8px); opacity: 0; } }
+        @keyframes hwSpin { to { transform: rotate(360deg); } }
+        @keyframes hwSpeed { 0% { transform: translateX(8px); opacity: 0; } 50% { opacity: 1; } 100% { transform: translateX(-8px); opacity: 0; } }
+        @keyframes hwRide { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1.5px); } }
+        @keyframes hwBar { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+        @keyframes hwFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+
+        .hw-fill, .hw-pop, .hw-coin, .hw-ripple { transform-box: fill-box; }
+        .hw-fill { transform-origin: left center; }
+        .hw-pop, .hw-coin, .hw-ripple { transform-origin: center; }
+        .hw-art { animation: hwFloat 4.5s ease-in-out infinite; }
+        .hw-on .hw-fill { animation: hwFill .7s ease-out both; animation-delay: var(--d, 0s); }
+        .hw-on .hw-pop { animation: hwPop .5s cubic-bezier(.2,1.4,.4,1) both; animation-delay: var(--d, 0s); }
+        .hw-on .hw-bounce { animation: hwBounce 1.3s ease-in-out infinite; }
+        .hw-on .hw-ripple { animation: hwRipple 1.8s ease-out infinite; animation-delay: var(--d, 0s); }
+        .hw-on .hw-coin { animation: hwCoin 1.8s ease-in-out infinite; }
+        .hw-on .hw-steam { animation: hwSteam 2s ease-in infinite; animation-delay: var(--d, 0s); }
+        .hw-on .hw-spin { animation: hwSpin .8s linear infinite; }
+        .hw-on .hw-speed { animation: hwSpeed .9s linear infinite; animation-delay: var(--d, 0s); }
+        .hw-on .hw-ride { animation: hwRide .5s ease-in-out infinite; }
+        .hw-on .hw-barfill { animation: hwBar 2.4s ease-out both; }
+
         @media (prefers-reduced-motion: reduce) {
-          .home-drift-a, .home-drift-b, .home-drift-c, .home-spin-a, .home-spin-b, .home-cue { animation: none !important; }
+          .home-drift-a, .home-drift-b, .home-drift-c, .home-spin-a, .home-spin-b, .home-cue, .home-bump, .hw-art, .hw-on * { animation: none !important; }
         }
       `}</style>
 
@@ -1121,16 +1842,20 @@ export default function Home() {
             </div>
 
             <div className="mt-7 flex flex-col justify-center gap-3 sm:mt-8 sm:flex-row lg:justify-start">
-              <Link to={startTo} className="btn-primary group relative overflow-hidden px-8 py-3.5">
+              <a
+                href="#weekly-menu"
+                onClick={scrollToMenu}
+                className="btn-primary group relative overflow-hidden px-8 py-3.5 transition duration-300 active:scale-[.98]"
+              >
                 <span
                   className="pointer-events-none absolute inset-y-0 left-0 w-1/3 bg-gradient-to-r from-transparent via-white/40 to-transparent"
                   style={{ animation: "homeShine 3.8s ease-in-out 1s infinite" }}
                 />
-                Get started free
+                Explore Our Menu
                 <FaArrowRight className="text-xs transition group-hover:translate-x-1" />
-              </Link>
-              <Link to="/login" className="btn-outline-light px-8 py-3.5">
-                Login to account
+              </a>
+              <Link to={startTo} className="btn-outline-light px-8 py-3.5 transition duration-300 active:scale-[.98]">
+                {auth ? "Go to dashboard" : "Get started free"}
               </Link>
             </div>
 
@@ -1246,6 +1971,9 @@ export default function Home() {
           </div>
         </Reveal>
       </section>
+
+      {/* ============ HOW IT WORKS (3rd section) ============ */}
+      <HowItWorks startTo={startTo} authed={Boolean(auth)} />
 
       {/* ============ WEEKLY MENU ============ */}
       <MenuShowcase />
@@ -1391,32 +2119,6 @@ export default function Home() {
               </div>
             </div>
           </Reveal>
-        </div>
-      </section>
-
-      {/* ============ STEPS ============ */}
-      <section className="border-y border-slate-200 bg-white py-16 sm:py-24">
-        <div className="mx-auto max-w-7xl px-4 sm:px-5">
-          <Reveal>
-            <h2 className="max-w-xl text-3xl font-bold sm:text-4xl">Your first order in three steps</h2>
-          </Reveal>
-
-          <ol className="mt-10 grid gap-10 sm:mt-14 md:grid-cols-3">
-            {STEPS.map((s, i) => (
-              <li key={s.title} className="relative">
-                {i < STEPS.length - 1 && (
-                  <span className="absolute left-14 top-6 hidden h-px w-[calc(100%-2rem)] bg-gradient-to-r from-blue-300 to-orange-300 md:block" />
-                )}
-                <Reveal delay={i * 150}>
-                  <span className="relative z-10 flex h-12 w-12 items-center justify-center rounded-full bg-blue-700 font-display text-lg font-bold text-white shadow-lg shadow-blue-700/30 ring-8 ring-white">
-                    {i + 1}
-                  </span>
-                  <h3 className="mt-5 text-xl font-bold">{s.title}</h3>
-                  <p className="mt-2 max-w-xs leading-relaxed text-slate-500">{s.text}</p>
-                </Reveal>
-              </li>
-            ))}
-          </ol>
         </div>
       </section>
 
